@@ -698,12 +698,13 @@ function deleteOldItems() {
   const before = DATA.length;
   DATA = DATA.filter(function(item) { return (item.date || '9999-99-99') >= cutoffStr; });
   const removed = before - DATA.length;
-  if (removed === 0) {
-    alert('90日以内のデータのみです。削除対象はありません。');
-  } else {
-    alert(removed + '件の古いデータを非表示にしました。);
+    if (removed === 0) {
+      alert('90日以内的データのみです。削除対象はありません。');
+    } else {
+      alert(removed + '件の古いデータを非表示にしました。');
+    }
 
-//永続的に削除するには、GitHub Actions で「Update Dashboard Data」ワークフローを手動実行し「cleanup」オプションを有効にしてください。');
+    // 永続的に削除するには、GitHub Actions で「Update Dashboard Data」ワークフローを手動実行し「cleanup」オプションを有効にしてください。
     initGrids();
   }
 }
