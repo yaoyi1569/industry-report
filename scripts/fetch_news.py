@@ -4,6 +4,12 @@ import json
 import os
 
 try:
+    import feedparser
+    _feedparser_available = True
+except ImportError:
+    _feedparser_available = False
+
+try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
@@ -87,6 +93,7 @@ def determine_info_type(text):
 
 
 def fetch_from_google_cse(query, api_key, cse_id, num=10):
+    """Return list of items on success, None on a fatal API error (e.g. 403 forbidden)."""
     url = 'https://www.googleapis.com/customsearch/v1'
     params = {
         'key': api_key,
@@ -101,15 +108,51 @@ def fetch_from_google_cse(query, api_key, cse_id, num=10):
         return resp.json().get('items', [])
     except requests.exceptions.HTTPError as e:
         print(f"  Error fetching query '{query}': {e}")
+        fatal = False
         try:
             body = e.response.json()
             err = body.get('error', {})
-            print(f"  Google API error {err.get('code')}: {err.get('message')} (reason: {err.get('errors', [{}])[0].get('reason')})")
+            code = err.get('code')
+            reason = err.get('errors', [{}])[0].get('reason')
+            print(f"  Google API error {code}: {err.get('message')} (reason: {reason})")
+            # 403 = API not enabled / project lacks access; treat as fatal and fall back to RSS
+            if code == 403:
+                print('  Fatal API error — switching to Google News RSS fallback for all queries.')
+                fatal = True
         except Exception:
             pass
-        return []
+        return None if fatal else []
     except Exception as e:
         print(f"  Error fetching query '{query}': {e}")
+        return []
+
+
+def fetch_from_google_news_rss(query, max_items=10):
+    """Fetch news items from Google News RSS (no API key required)."""
+    if not _feedparser_available:
+        print('  feedparser not available; skipping RSS fallback.')
+        return []
+    feed_url = 'https://news.google.com/rss/search?q={}&hl=ja&gl=JP&ceid=JP:ja'.format(
+        requests.utils.quote(query)
+    )
+    try:
+        feed = feedparser.parse(feed_url)
+        items = []
+        for entry in feed.entries[:max_items]:
+            title = entry.get('title', '')
+            link = entry.get('link', '')
+            summary = entry.get('summary', '')
+            source_info = entry.get('source')
+            source = source_info.get('title', '') if isinstance(source_info, dict) else ''
+            items.append({
+                'title': title,
+                'link': link,
+                'snippet': summary,
+                'displayLink': source,
+            })
+        return items
+    except Exception as e:
+        print(f'  RSS fetch error for query \'{query}\': {e}')
         return []
 
 
@@ -117,16 +160,27 @@ def fetch_news():
     api_key = os.environ.get('GOOGLE_API_KEY', '')
     cse_id = os.environ.get('GOOGLE_CSE_ID', '')
 
-    if not api_key or not cse_id:
-        print('WARNING: GOOGLE_API_KEY or GOOGLE_CSE_ID not set. Skipping fetch.')
-        return []
-
     today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     results = []
+    use_rss_fallback = False
+
+    if not api_key or not cse_id:
+        print('WARNING: GOOGLE_API_KEY or GOOGLE_CSE_ID not set. Falling back to Google News RSS.')
+        use_rss_fallback = True
 
     for query in SEARCH_QUERIES:
         print(f'  Searching: {query}')
-        items = fetch_from_google_cse(query, api_key, cse_id)
+        if use_rss_fallback:
+            items = fetch_from_google_news_rss(query)
+        else:
+            cse_items = fetch_from_google_cse(query, api_key, cse_id)
+            if cse_items is None:
+                # None signals a fatal API error; switch to RSS for remaining queries
+                use_rss_fallback = True
+                items = fetch_from_google_news_rss(query)
+            else:
+                items = cse_items
+
         for item in items:
             title = item.get('title', '')
             url = item.get('link', '')
