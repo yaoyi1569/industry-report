@@ -1,5 +1,6 @@
+import re
 import requests
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import os
 
@@ -127,6 +128,11 @@ def fetch_from_google_cse(query, api_key, cse_id, num=10):
         return []
 
 
+def strip_html(text):
+    """Remove HTML tags from a string."""
+    return re.sub(r'<[^>]+>', '', text or '').strip()
+
+
 def fetch_from_google_news_rss(query, max_items=10):
     """Fetch news items from Google News RSS (no API key required)."""
     if not _feedparser_available:
@@ -184,7 +190,7 @@ def fetch_news():
         for item in items:
             title = item.get('title', '')
             url = item.get('link', '')
-            snippet = item.get('snippet', '')
+            snippet = strip_html(item.get('snippet', ''))
             source_name = item.get('displayLink', '')
 
             full_text = title + ' ' + snippet
@@ -211,21 +217,27 @@ def fetch_news():
 def load_existing(path):
     if os.path.exists(path):
         with open(path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return []
+            raw = json.load(f)
+        # Support both legacy array format and new {"last_updated":..., "items":[...]} format
+        if isinstance(raw, list):
+            return raw, None
+        return raw.get('items', []), raw.get('last_updated')
+    return [], None
 
 
-def save_data(path, data):
+def save_data(path, items):
     os.makedirs(os.path.dirname(path), exist_ok=True)
+    now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    payload = {'last_updated': now, 'items': items}
     with open(path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+        json.dump(payload, f, ensure_ascii=False, indent=2)
 
 
 if __name__ == '__main__':
     data_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'news_data.json')
     data_path = os.path.normpath(data_path)
 
-    existing = load_existing(data_path)
+    existing, _ = load_existing(data_path)
     existing_urls = {item['url'] for item in existing}
 
     print(f'Existing items: {len(existing)}')
@@ -234,10 +246,22 @@ if __name__ == '__main__':
     new_items = fetch_news()
     appended = 0
     for item in new_items:
+        if appended >= 40:
+            print(f'  Daily cap of 40 new items reached; skipping remaining.')
+            break
         if item['url'] and item['url'] not in existing_urls:
             existing.append(item)
             existing_urls.add(item['url'])
             appended += 1
+
+    # Prune items older than 90 days
+    cutoff = datetime.now(timezone.utc) - timedelta(days=90)
+    cutoff_str = cutoff.strftime('%Y-%m-%d')
+    before_prune = len(existing)
+    existing = [item for item in existing if item.get('date', '9999-99-99') >= cutoff_str]
+    pruned = before_prune - len(existing)
+    if pruned:
+        print(f'Pruned {pruned} items older than 90 days.')
 
     # Sort newest first
     existing.sort(key=lambda x: x.get('date', ''), reverse=True)
