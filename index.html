@@ -698,10 +698,24 @@ function renderHighlights(highlights) {
   var container = document.getElementById('highlight-cards');
   var section = document.getElementById('highlights-section');
   if (!container) return;
+
+  // If no AI-generated highlights, build a fallback from the top 3 DATA items
   if (!highlights || highlights.length === 0) {
-    if (section) section.style.display = 'none';
-    return;
+    if (!DATA || DATA.length === 0) {
+      if (section) section.style.display = 'none';
+      return;
+    }
+    highlights = DATA.slice(0, 3).map(function(d) {
+      return {
+        title: d.title || '',
+        company: d.company || '不明',
+        category: (d.category_name || '') + ' / ' + (d.info_type || ''),
+        date: d.date || '',
+        impact: d.summary || d.title || '',
+      };
+    });
   }
+
   if (section) section.style.display = '';
   container.innerHTML = highlights.map(function(h, i) {
     var rank = RANK_ICONS[i] || '🏅';
@@ -803,16 +817,19 @@ function init() {
       return resp.json();
     })
     .then(function(json) {
+      var highlights;
       // Support both legacy array and new {last_updated, highlights, items} format
       if (Array.isArray(json)) {
         DATA = json;
-        renderHighlights([]);
+        highlights = [];
       } else {
         DATA = json.items || [];
         setLastUpdated(json.last_updated);
-        renderHighlights(json.highlights || []);
+        highlights = json.highlights || [];
       }
+      // Sort newest-first before rendering so the highlights fallback picks the right items
       DATA.sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
+      renderHighlights(highlights);
       initGrids();
     })
     .catch(function(e) {

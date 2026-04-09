@@ -22,35 +22,55 @@ def strip_html(text):
 
 
 def ai_summarize(title, snippet, company, api_key):
-    """Generate a Japanese factual news summary using Gemini API."""
+    """Generate a Japanese factual news summary using Gemini API.
+
+    Returns a 2-tuple: (is_relevant: bool, summary: str | None).
+    Returns (False, None) if Gemini determines the article is off-topic.
+    Returns (True, None) if the API is unavailable or the article looks paywalled.
+    """
     if not GENAI_AVAILABLE or not api_key:
-        return None
+        return True, None
+    # Skip paywall-only articles: snippet is essentially empty or just repeats the title
+    clean_snippet = (snippet or '').strip()
+    if len(clean_snippet) < 30 or clean_snippet == title.strip():
+        print(f'  [SKIP paywall/no-body] {title[:60]}')
+        return False, None
     try:
         client = google_genai.Client(api_key=api_key)
         prompt = (
-            f'あなたは家庭紙・衛生用品業界の専門記者です。\n'
-            f'以下のニュース記事について、タイトルに含まれる数値・日付・固有名詞・金額を正確に活用し、'
-            f'「誰が・いつ・何を・どのように」が明確に伝わる、業界関係者向けの日本語ニュースサマリーを'
-            f'80〜150字で作成してください。\n'
-            f'タイトルをそのまま言い換えるだけでなく、具体的な数字・背景・意義を補足した文章にしてください。\n'
-            f'【出力例】\n'
-            f'「ユニ・チャームは2026年4月1〜3日に普通株式584,800株を取得価額約5.5億円で取得し、'
-            f'2月12日決議の自己株式取得を完了した。」\n'
-            f'「日本製紙は熊本県八代工場に約310億円を投じ、トイレットペーパー等家庭紙生産ラインを導入。'
-            f'2028年2月稼働・年4万トン規模を計画している。」\n\n'
+            'あなたは家庭紙・衛生用品業界の専門記者です。\n\n'
+            '【ステップ1: 関連性チェック】\n'
+            'この記事が「家庭紙・ティッシュ・トイレットペーパー・おむつ・衛生用品・不織布・'
+            '吸収体加工機・包装機・パレタイザー」に直接関連する業界ニュースかどうかを判断してください。\n'
+            '洗剤・柔軟剤・シャンプー・化粧品・食品・飲料など、家庭紙／衛生用品と無関係な'
+            'FMCGニュースであれば「IRRELEVANT」とだけ出力してください。\n\n'
+            '【ステップ2: 要約（関連する場合のみ）】\n'
+            '業界関連ニュースの場合は、本文スニペットを深く読み込み、'
+            '「誰が・いつ・何を・どのように・数値」が明確に伝わる、'
+            '業界関係者向けの日本語ニュースサマリーを80〜150字で作成してください。\n'
+            'タイトルをそのまま言い換えるだけでなく、本文から得た具体的な数字・背景・意義を'
+            '含めた独自の文章にしてください。本文に数値がない場合もタイトル以外の情報を補足して'
+            'ください。\n\n'
+            '【出力例】\n'
+            '「ユニ・チャームは2026年4月1〜3日に普通株式584,800株を取得価額約5.5億円で取得し、'
+            '2月12日決議の自己株式取得を完了した。」\n\n'
             f'会社名: {company}\n'
             f'タイトル: {title}\n'
-            f'スニペット: {snippet}\n\n'
-            f'サマリー（日本語のみ、80〜150字）:'
+            f'本文スニペット: {clean_snippet}\n\n'
+            f'出力（「IRRELEVANT」またはサマリー日本語のみ）:'
         )
         response = client.models.generate_content(
             model='gemini-2.0-flash',
             contents=prompt,
         )
-        return response.text.strip()[:300]
+        text = response.text.strip()
+        if text.strip().upper() == 'IRRELEVANT':
+            print(f'  [AI-IRRELEVANT] {title[:60]}')
+            return False, None
+        return True, text[:300]
     except Exception as e:
         print(f'  Gemini error for "{title[:40]}...": {e}')
-        return None
+        return True, None
 
 
 def generate_highlights(items, api_key):
@@ -136,7 +156,8 @@ def main():
         return
 
     updated = 0
-    for item in data:
+    irrelevant_indices = []
+    for idx, item in enumerate(data):
         summary = strip_html(item.get('summary', ''))
         # Strip HTML from existing summary if it contained tags
         if item.get('summary', '') != summary:
@@ -148,27 +169,41 @@ def main():
 
         title = item.get('title', '')
         company = item.get('company', '不明')
-        snippet = summary or title
+        snippet = summary or ''
 
-        new_summary = ai_summarize(title, snippet, company, api_key)
+        is_relevant, new_summary = ai_summarize(title, snippet, company, api_key)
+        if not is_relevant:
+            # Gemini flagged as off-topic or paywall-only — mark for removal
+            irrelevant_indices.append(idx)
+            continue
         if new_summary:
             item['summary'] = new_summary
             updated += 1
         elif not summary:
+            # Only keep the title fallback if it's not a pure paywall stub
             item['summary'] = title[:200]
+
+    # Remove items flagged as irrelevant by Gemini (in reverse order to preserve indices)
+    for idx in sorted(irrelevant_indices, reverse=True):
+        removed_title = data[idx].get('title', '')[:60]
+        print(f'  Removing irrelevant item: {removed_title}')
+        data.pop(idx)
+
+    if irrelevant_indices:
+        print(f'Removed {len(irrelevant_indices)} irrelevant/paywall items.')
 
     # Sort newest first
     data.sort(key=lambda x: x.get('date', ''), reverse=True)
 
-    # Regenerate Top 3 highlights from today's most recent items
+    # Regenerate Top 3 highlights — prefer today's items, fall back to most recent 40
     today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     today_items = [item for item in data if item.get('date', '') == today]
-    if today_items and api_key:
-        print(f'Generating Top 3 highlights from {len(today_items)} today\'s items...')
-        highlights = generate_highlights(today_items, api_key)
+    source_items = today_items if today_items else data[:40]
+    if api_key and source_items:
+        print(f'Generating Top 3 highlights from {len(source_items)} items...')
+        highlights = generate_highlights(source_items, api_key)
         if not highlights:
-            # Fall back to all recent items if no today items matched
-            highlights = generate_highlights(data, api_key)
+            highlights = existing_highlights
     else:
         highlights = existing_highlights
 

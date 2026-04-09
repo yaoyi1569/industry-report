@@ -16,21 +16,60 @@ try:
 except ImportError:
     pass
 
-# Search queries for the industry
+# Search queries for the industry — scoped tightly to tissue/hygiene sector
 SEARCH_QUERIES = [
-    'ユニ・チャーム 新製品 OR 投資 OR 決算',
-    '花王 新製品 OR 投資 OR 研究開発',
-    'P&G Japan 新製品 OR 投資',
-    'ライオン 新製品 OR 投資',
-    '大王製紙 OR 王子ホールディングス OR 日本製紙 業界',
-    '瑞光 Zuiko 加工機 OR 設備',
+    'ユニ・チャーム ティシュー OR おむつ OR 衛生用品 OR 決算 OR 投資',
+    '花王 ティシュー OR 家庭紙 OR 衛生用品 OR 研究開発 OR 投資',
+    'P&G Japan ティシュー OR おむつ OR 衛生用品',
+    'ライオン トイレット OR 衛生用品 OR 新製品 OR 投資',
+    '大王製紙 OR 王子ホールディングス OR 日本製紙 家庭紙 OR トイレット OR 業界',
+    '瑞光 Zuiko 加工機 OR 設備 不織布',
     'GDM Fameccanica 吸収体 加工機',
-    'OPTIMA packaging 包装機',
-    'ファナック FANUC ロボット 包装 OR パレタイザー',
-    'Essity Kimberly-Clark 衛生用品',
+    'OPTIMA packaging 包装機 衛生',
+    'ファナック FANUC パレタイザー 衛生 OR 包装',
+    'Essity Kimberly-Clark ティシュー OR 衛生用品',
     'ウェットティッシュ Winner Medical 稳健医療',
     '家庭紙 トイレットペーパー 業界 規制 OR 値上げ',
+    '丸富製紙 OR カミ商事 家庭紙 OR ティシュー',
 ]
+
+# Core tissue/hygiene terms — at least one must appear in title+snippet
+TISSUE_CORE_TERMS = [
+    '家庭紙', 'ティシュー', 'ティッシュ', 'トイレット', 'ちり紙', 'キッチンペーパー',
+    'おむつ', 'オムツ', 'ナプキン', '生理用', '失禁', '衛生用品', '衛生用紙',
+    'ウェットティシュ', 'ウェットティッシュ', '不織布', '吸収体', 'パルプ',
+    '抽紙', '衛生紙',
+]
+
+# Industry-specific companies (presence alone qualifies the article)
+TISSUE_INDUSTRY_COMPANIES = [
+    'ユニ・チャーム', 'unicharm',
+    '大王製紙', '王子製紙', '王子ホールディングス', '日本製紙', '丸富製紙',
+    '瑞光', 'zuiko', 'gdm', 'fameccanica',
+    'winner medical', '稳健', 'essity', 'kimberly-clark', 'kimberly clark',
+    'キンバリー', 'カミ商事',
+]
+
+# Off-topic product terms — if any appear WITHOUT core tissue terms, reject the article
+OFFTOPIC_TERMS = [
+    '洗剤', '柔軟剤', '洗濯洗剤', 'アリエール', 'レノア', 'ボールド', 'ジョイ',
+    'ファブリーズ', '漂白剤', '洗濯槽',
+    'シャンプー', 'リンス', 'コンディショナー', 'ボディソープ',
+    '化粧品', 'リップ', 'ファンデーション', '美容液', 'スキンケア', '口紅',
+    '食品', '飲料', 'コーヒー', 'ビール', '菓子', 'サプリ',
+]
+
+
+def is_industry_relevant(title, snippet):
+    """Return True only if the article is relevant to the tissue/hygiene/paper industry."""
+    text = (title + ' ' + snippet).lower()
+    has_core = any(term.lower() in text for term in TISSUE_CORE_TERMS)
+    has_company = any(name.lower() in text for name in TISSUE_INDUSTRY_COMPANIES)
+    has_offtopic = any(term.lower() in text for term in OFFTOPIC_TERMS)
+    # Explicitly off-topic articles without any tissue/hygiene signal are rejected
+    if has_offtopic and not has_core:
+        return False
+    return has_core or has_company
 
 CATEGORY_KEYWORDS = {
     '①': ['ユニ・チャーム', '花王', 'P&G', 'ライオン', 'キンバリー', 'Kimberly', 'Essity', '衛生用品', 'おむつ'],
@@ -192,6 +231,11 @@ def fetch_news():
             url = item.get('link', '')
             snippet = strip_html(item.get('snippet', ''))
             source_name = item.get('displayLink', '')
+
+            # Mandatory relevance check — discard off-topic articles (e.g. laundry detergent)
+            if not is_industry_relevant(title, snippet):
+                print(f'  [SKIP non-relevant] {title[:60]}')
+                continue
 
             full_text = title + ' ' + snippet
             category_id, category_name = map_category(full_text)
