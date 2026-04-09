@@ -204,9 +204,6 @@
   .pg-btn:disabled { opacity: 0.4; cursor: default; }
   .pg-ellipsis { color: var(--text-muted); font-size: 13px; }
 
-  /* CLEANUP BUTTON */
-  .btn-cleanup { background: #ef4444; color: #fff; border: none; border-radius: 6px; padding: 5px 10px; font-size: 11px; cursor: pointer; white-space: nowrap; font-weight: 600; }
-  .btn-cleanup:hover { background: #dc2626; }
 </style>
 </head>
 <body>
@@ -218,15 +215,12 @@
     <div class="header-logo">大王製紙 技術開発部限定</div>
     <div>
       <div class="header-title">家庭紙・衛生用品 業界インテリジェンスダッシュボード</div>
-      <div class="header-subtitle">自動収集・AI要約 ／ 3日ごとに更新</div>
+      <div class="header-subtitle">自動収集・AI要約 ／ 毎日更新</div>
     </div>
   </div>
   <div class="header-right">
-    <div class="header-date">2026年4月6日（月）</div>
-    <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;">
-      <div>最終更新: 05:09 JST</div>
-      <button id="delete-old-btn" class="btn-cleanup" onclick="deleteOldItems()">3ヶ月以上のデータを削除</button>
-    </div>
+    <div class="header-date" id="last-updated-date">―</div>
+    <div>最終更新: <span id="last-updated-time">―</span> JST</div>
   </div>
 </header>
 
@@ -237,7 +231,7 @@
   <div class="sidebar-section">
     <div class="sidebar-label">ナビゲーション</div>
     <a class="nav-item active" data-section="s-overview" onclick="showSection('s-overview',this)">
-      <span class="nav-icon">🏠</span> 総合（トップ）<span class="nav-count">38</span>
+      <span class="nav-icon">🏠</span> 総合（トップ）<span class="nav-count" id="cnt-overview"></span>
     </a>
     <a class="nav-item" data-section="s-rivals" onclick="showSection('s-rivals',this)">
       <span class="nav-icon">🏭</span> 競合メーカー動向<span class="nav-count" id="cnt-rivals"></span>
@@ -282,11 +276,11 @@
     <!-- STAT CARDS -->
     <div class="stat-grid">
       <div class="stat-card">
-        <div class="stat-num">38</div>
+        <div class="stat-num" id="total-count">―</div>
         <div class="stat-label">📰 収集記事数</div>
       </div>
       <div class="stat-card green">
-        <div class="stat-num">18</div>
+        <div class="stat-num" id="company-count">―</div>
         <div class="stat-label">🏢 対象企業数</div>
       </div>
       <div class="stat-card purple">
@@ -300,27 +294,10 @@
     </div>
 
     <!-- TOP 3 HIGHLIGHTS -->
-    <div class="highlights">
+    <div class="highlights" id="highlights-section">
       <div class="highlights-title">🚨 本日のトップ3ハイライト <span style="font-size:12px;font-weight:400;color:#94a3b8;">― 大王製紙へのインパクト大</span></div>
-      <div class="highlight-cards">
-        <div class="highlight-card">
-          <div class="highlight-card-rank">🥇</div>
-          <div class="highlight-card-title">改正資源有効利用促進法 施行（再生プラ義務化）</div>
-          <div class="highlight-card-company">📌 規制・環境 ／ 2026-04-01</div>
-          <div class="highlight-card-impact">⚡ 大王製紙の容器包装全品に再生プラスチック利用義務が発生。計画提出・定期報告が必要。直接対応必須の最重要規制変化。</div>
-        </div>
-        <div class="highlight-card">
-          <div class="highlight-card-rank">🥈</div>
-          <div class="highlight-card-title">トイレットペーパー2026年4月値上げ（大王10%以上・丸富15%以上）</div>
-          <div class="highlight-card-company">📌 規制・価格 ／ 2026-04-01</div>
-          <div class="highlight-card-impact">⚡ 大王製紙（エリエール）自身の10%以上値上げが実施。競合他社との価格競争・消費者行動の変化に注視が必要。</div>
-        </div>
-        <div class="highlight-card">
-          <div class="highlight-card-rank">🥉</div>
-          <div class="highlight-card-title">Kimberly-Clark、米国製造に20億ドル超を投資（北米最大規模拡張）</div>
-          <div class="highlight-card-company">📌 投資 ／ 2026-03-01</div>
-          <div class="highlight-card-impact">⚡ グローバル競合の大規模製造能力増強。輸出競争力強化により日本市場への影響も視野に入れた対応検討が必要。</div>
-        </div>
+      <div class="highlight-cards" id="highlight-cards">
+        <!-- populated by renderHighlights() -->
       </div>
     </div>
 
@@ -675,85 +652,122 @@ function closeMobileMenu() {
 // SET TODAY DATE
 // ============================================================
 function setTodayDate() {
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = today.getMonth() + 1;
-  const date = today.getDate();
-  const days = ['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日'];
-  const dayName = days[today.getDay()];
-  const dateStr = year + '年' + month + '月' + date + '日（' + dayName + '）';
-  const el = document.getElementById('todayDate');
+  var today = new Date();
+  var year = today.getFullYear();
+  var month = today.getMonth() + 1;
+  var date = today.getDate();
+  var days = ['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日'];
+  var dayName = days[today.getDay()];
+  var dateStr = year + '年' + month + '月' + date + '日（' + dayName + '）';
+  var el = document.getElementById('todayDate');
   if (el) {
     el.textContent = '全カテゴリーの最新業界情報を集約表示 ― ' + dateStr;
   }
 }
 
 // ============================================================
-// DELETE OLD ITEMS (UI filter, 90 days)
+// LAST UPDATED (reads last_updated from JSON)
 // ============================================================
-function deleteOldItems() {
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 90);
-  const cutoffStr = cutoff.toISOString().slice(0, 10);
-  const before = DATA.length;
-  DATA = DATA.filter(function(item) { return (item.date || '9999-99-99') >= cutoffStr; });
-  const removed = before - DATA.length;
-    if (removed === 0) {
-      alert('90日以内的データのみです。削除対象はありません。');
-    } else {
-      alert(removed + '件の古いデータを非表示にしました。');
-    }
+function setLastUpdated(isoString) {
+  if (!isoString) return;
+  try {
+    var dt = new Date(isoString);
+    var jst = new Date(dt.getTime() + 9 * 60 * 60 * 1000);
+    var wdays = ['日', '月', '火', '水', '木', '金', '土'];
+    var year = jst.getUTCFullYear();
+    var month = jst.getUTCMonth() + 1;
+    var day = jst.getUTCDate();
+    var dayName = wdays[jst.getUTCDay()];
+    var hh = String(jst.getUTCHours()).padStart(2, '0');
+    var mm = String(jst.getUTCMinutes()).padStart(2, '0');
+    var dateEl = document.getElementById('last-updated-date');
+    var timeEl = document.getElementById('last-updated-time');
+    if (dateEl) dateEl.textContent = year + '年' + month + '月' + day + '日（' + dayName + '）';
+    if (timeEl) timeEl.textContent = hh + ':' + mm;
+  } catch (e) {
+    console.warn('Could not parse last_updated:', isoString);
+  }
+}
 
-    // 永続的に削除するには、GitHub Actions...
-    initGrids();
-} // 这里只保留一个花括号，用来结束 deleteOldItems 函数
+// ============================================================
+// RENDER TOP 3 HIGHLIGHTS
+// ============================================================
+var RANK_ICONS = ['🥇', '🥈', '🥉'];
+
+function renderHighlights(highlights) {
+  var container = document.getElementById('highlight-cards');
+  var section = document.getElementById('highlights-section');
+  if (!container) return;
+  if (!highlights || highlights.length === 0) {
+    if (section) section.style.display = 'none';
+    return;
+  }
+  if (section) section.style.display = '';
+  container.innerHTML = highlights.map(function(h, i) {
+    var rank = RANK_ICONS[i] || '🏅';
+    return '<div class="highlight-card">'
+      + '<div class="highlight-card-rank">' + rank + '</div>'
+      + '<div class="highlight-card-title">' + (h.title || '') + '</div>'
+      + '<div class="highlight-card-company">📌 ' + (h.category || '') + ' ／ ' + (h.date || '') + '</div>'
+      + '<div class="highlight-card-impact">⚡ ' + (h.impact || '') + '</div>'
+      + '</div>';
+  }).join('');
+}
 
 // ============================================================
 // INIT GRIDS
 // ============================================================
 function initGrids() {
   paginateGrid('grid-overview', DATA);
-  const totalNumEl = document.querySelector('.stat-card .stat-num');
-  if (totalNumEl) totalNumEl.textContent = DATA.length;
 
-  const rivals = DATA.filter(function(d) { return d.category_id === '①' || d.category_id === '②'; });
+  var totalEl = document.getElementById('total-count');
+  if (totalEl) totalEl.textContent = DATA.length;
+  var companyEl = document.getElementById('company-count');
+  if (companyEl) {
+    var uniqueCompanies = new Set(DATA.map(function(d) { return d.company; }).filter(function(c) { return c && c !== '不明'; }));
+    companyEl.textContent = uniqueCompanies.size;
+  }
+  var cntOverview = document.getElementById('cnt-overview');
+  if (cntOverview) cntOverview.textContent = DATA.length;
+
+  var rivals = DATA.filter(function(d) { return d.category_id === '①' || d.category_id === '②'; });
   paginateGrid('grid-rivals', rivals);
   document.getElementById('cnt-rivals').textContent = rivals.length;
 
-  const machine = DATA.filter(function(d) { return d.category_id === '③'; });
+  var machine = DATA.filter(function(d) { return d.category_id === '③'; });
   paginateGrid('grid-machine', machine);
   document.getElementById('cnt-machine').textContent = machine.length;
 
-  const packagingKw = ['包装', 'パッケージ', 'フィル', 'OPTIMA', 'optima', '充填', '袋', 'ライン'];
-  const packaging = DATA.filter(function(d) {
+  var packagingKw = ['包装', 'パッケージ', 'フィル', 'OPTIMA', 'optima', '充填', '袋', 'ライン'];
+  var packaging = DATA.filter(function(d) {
     return d.category_id === '④' && (d.info_type === '包装機技術' || packagingKw.some(function(k) { return d.title.includes(k) || d.summary.includes(k); }));
   });
   paginateGrid('grid-packaging', packaging);
   document.getElementById('cnt-packaging').textContent = packaging.length;
 
-  const palletizerKw = ['パレタイ', 'ロボット', 'robot', 'ファナック', 'FANUC', '自動化', 'automation'];
-  const palletizer = DATA.filter(function(d) {
+  var palletizerKw = ['パレタイ', 'ロボット', 'robot', 'ファナック', 'FANUC', '自動化', 'automation'];
+  var palletizer = DATA.filter(function(d) {
     return d.category_id === '④' && (palletizerKw.some(function(k) { return d.title.toLowerCase().includes(k.toLowerCase()) || d.summary.toLowerCase().includes(k.toLowerCase()); }) || d.company === 'ファナック');
   });
   paginateGrid('grid-palletizer', palletizer);
   document.getElementById('cnt-palletizer').textContent = palletizer.length;
 
-  const tissue = DATA.filter(function(d) { return d.category_id === '⑥'; });
+  var tissue = DATA.filter(function(d) { return d.category_id === '⑥'; });
   paginateGrid('grid-tissue', tissue);
   document.getElementById('cnt-tissue').textContent = tissue.length;
 
-  const wet = DATA.filter(function(d) { return d.category_id === '⑤'; });
+  var wet = DATA.filter(function(d) { return d.category_id === '⑤'; });
   paginateGrid('grid-wet', wet);
   document.getElementById('cnt-wet').textContent = wet.length;
 
-  const toiletKw = ['トイレット', 'トイレ', '家庭紙', 'ティシュ', 'ティッシュ', 'tissue', 'Tissue', '家庭紙工業', '衛生用紙'];
-  const toilet = DATA.filter(function(d) {
+  var toiletKw = ['トイレット', 'トイレ', '家庭紙', 'ティシュ', 'ティッシュ', 'tissue', 'Tissue', '家庭紙工業', '衛生用紙'];
+  var toilet = DATA.filter(function(d) {
     return toiletKw.some(function(k) { return d.title.includes(k) || d.summary.includes(k) || d.category_name.includes(k); });
   });
   paginateGrid('grid-toilet', toilet);
   document.getElementById('cnt-toilet').textContent = toilet.length;
 
-  const patent = DATA.filter(function(d) { return d.info_type === '特許'; });
+  var patent = DATA.filter(function(d) { return d.info_type === '特許'; });
   if (patent.length === 0) {
     document.getElementById('empty-patent').style.display = 'block';
     document.getElementById('grid-patent').innerHTML = '';
@@ -763,7 +777,7 @@ function initGrids() {
   document.getElementById('cnt-patent').textContent = patent.length || '0';
   updateFilterCount('fc-patent', patent.length);
 
-  const research = DATA.filter(function(d) { return d.info_type === '研究開発'; });
+  var research = DATA.filter(function(d) { return d.info_type === '研究開発'; });
   if (research.length === 0) {
     document.getElementById('empty-research').style.display = 'block';
     document.getElementById('grid-research').innerHTML = '';
@@ -774,7 +788,7 @@ function initGrids() {
   document.getElementById('cnt-research').textContent = research.length || '0';
   updateFilterCount('fc-research', research.length);
 
-  const patentRd = DATA.filter(function(d) { return d.info_type === '特許' || d.info_type === '研究開発'; });
+  var patentRd = DATA.filter(function(d) { return d.info_type === '特許' || d.info_type === '研究開発'; });
   document.getElementById('patent-count').textContent = patentRd.length;
 }
 
@@ -789,20 +803,29 @@ function init() {
       return resp.json();
     })
     .then(function(json) {
-      DATA = json;
+      // Support both legacy array and new {last_updated, highlights, items} format
+      if (Array.isArray(json)) {
+        DATA = json;
+        renderHighlights([]);
+      } else {
+        DATA = json.items || [];
+        setLastUpdated(json.last_updated);
+        renderHighlights(json.highlights || []);
+      }
       DATA.sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
       initGrids();
     })
     .catch(function(e) {
       console.error('Error loading data/news_data.json:', e);
       DATA = [];
+      renderHighlights([]);
       initGrids();
     });
 }
 init();
 
 function updateFilterCount(id, n) {
-  const el = document.getElementById(id);
+  var el = document.getElementById(id);
   if (el) el.textContent = n + '件表示';
 }
 </script>

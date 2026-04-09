@@ -1,6 +1,6 @@
 import re
 import requests
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import os
 
@@ -246,10 +246,22 @@ if __name__ == '__main__':
     new_items = fetch_news()
     appended = 0
     for item in new_items:
+        if appended >= 40:
+            print(f'  Daily cap of 40 new items reached; skipping remaining.')
+            break
         if item['url'] and item['url'] not in existing_urls:
             existing.append(item)
             existing_urls.add(item['url'])
             appended += 1
+
+    # Prune items older than 90 days
+    cutoff = datetime.now(timezone.utc) - timedelta(days=90)
+    cutoff_str = cutoff.strftime('%Y-%m-%d')
+    before_prune = len(existing)
+    existing = [item for item in existing if item.get('date', '9999-99-99') >= cutoff_str]
+    pruned = before_prune - len(existing)
+    if pruned:
+        print(f'Pruned {pruned} items older than 90 days.')
 
     # Sort newest first
     existing.sort(key=lambda x: x.get('date', ''), reverse=True)
