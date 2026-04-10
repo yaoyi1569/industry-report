@@ -71,7 +71,8 @@ def _gemini_generate(client, model, contents):
     """
     global _consecutive_503_404_failures
     for attempt in range(MAX_429_RETRIES + 1):
-        time.sleep(1)  # minimum interval before every API request
+        if attempt > 0:
+            time.sleep(1)  # brief pause between retry attempts
         try:
             response = client.models.generate_content(model=model, contents=contents)
             _consecutive_503_404_failures = 0  # reset on success
@@ -97,8 +98,9 @@ def _gemini_generate(client, model, contents):
             if is_service_error:
                 _consecutive_503_404_failures += 1
                 print(
-                    f'  [SERVICE-ERROR] {503 if "503" in err_str else 404} response '
-                    f'(consecutive failures: {_consecutive_503_404_failures}/{CIRCUIT_BREAKER_THRESHOLD})'
+                    f'  [SERVICE-ERROR] 503/404 response '
+                    f'(consecutive failures: {_consecutive_503_404_failures}/{CIRCUIT_BREAKER_THRESHOLD}): '
+                    f'{err_str[:120]}'
                 )
                 if _consecutive_503_404_failures >= CIRCUIT_BREAKER_THRESHOLD:
                     raise CircuitBreakerTripped(
