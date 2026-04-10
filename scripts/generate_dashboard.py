@@ -1,7 +1,7 @@
 import json
 import os
 import re
-import time
+import requests
 from datetime import datetime, timezone
 
 try:
@@ -20,26 +20,14 @@ class DailyQuotaExhausted(Exception):
     """Raised when a Gemini API key has hit its daily quota (limit: 0)."""
 
 
-class CircuitBreakerTripped(Exception):
-    """Raised when too many consecutive 503/404 Gemini API errors have occurred."""
-
-
-# Number of consecutive 503/404 failures that trigger the circuit breaker
-CIRCUIT_BREAKER_THRESHOLD = 5
-# Module-level counter tracking consecutive 503/404 Gemini failures
-_consecutive_503_404_failures = 0
-
-
 # Maximum retry attempts for high-value items that fail the formatting check
 MAX_RETRIES = 3
 # Items with a score above this threshold are retried if formatting is poor
 RETRY_SCORE_THRESHOLD = 80
-# Maximum retry attempts when a 429 RESOURCE_EXHAUSTED error is received
-MAX_429_RETRIES = 3
-# Seconds to sleep between every Gemini API call (15 RPM free-tier limit)
-GEMINI_THROTTLE_SECONDS = 12
-# Seconds to wait before retrying after a 429 response
-GEMINI_429_WAIT_SECONDS = 30
+
+# OpenRouter configuration
+_OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1/chat/completions'
+_OPENROUTER_MODELS = ['google/gemini-flash-1.5', 'deepseek/deepseek-chat']
 
 # 20+20 bucket quota — top 20 from each bucket → 40 items total
 BUCKET_QUOTA = 20
@@ -60,65 +48,62 @@ def strip_html(text):
 
 
 def _gemini_generate(client, model, contents):
-    """Call Gemini API with rate limiting and 429 retry logic.
+    """Call Gemini API once with no retries or delays.
 
-    Sleeps 1 second before every call and GEMINI_THROTTLE_SECONDS after every
-    successful call to stay within the free-tier 15 RPM limit.  On a 429 /
-    RESOURCE_EXHAUSTED error, waits GEMINI_429_WAIT_SECONDS and retries up to
-    MAX_429_RETRIES times.  Tracks consecutive 503/404 failures and raises
-    CircuitBreakerTripped when CIRCUIT_BREAKER_THRESHOLD is reached.
-    Raises the last exception if all retries are exhausted.
+    Raises DailyQuotaExhausted when the API confirms the daily cap has been hit.
+    Any other error (including 404/503) is re-raised immediately so the caller
+    can fall through to the next tier in the waterfall.
     """
-    global _consecutive_503_404_failures
-    for attempt in range(MAX_429_RETRIES + 1):
-        if attempt > 0:
-            time.sleep(1)  # brief pause between retry attempts
+    try:
+        response = client.models.generate_content(model=model, contents=contents)
+        return response
+    except Exception as e:
+        err_str = str(e)
+        err_lower = err_str.lower()
+        is_daily_quota = (
+            'limit: 0' in err_str
+            or '"limit":0' in err_str
+            or '"limit": 0' in err_str
+            or 'DAILY_LIMIT_EXCEEDED' in err_str
+            or 'daily limit' in err_lower
+            or 'per day' in err_lower
+        )
+        if is_daily_quota:
+            raise DailyQuotaExhausted(err_str) from e
+        raise
+
+
+def _openrouter_generate(prompt):
+    """Call OpenRouter API as Tier 3 fallback.
+
+    Tries each model in _OPENROUTER_MODELS in order.  Returns the response
+    text on success, or raises the last exception if all models fail.
+    Requires the OPENROUTER_API_KEY environment variable to be set.
+    """
+    api_key = os.environ.get('OPENROUTER_API_KEY', '')
+    if not api_key:
+        raise RuntimeError('OPENROUTER_API_KEY not set')
+
+    headers = {
+        'Authorization': f'Bearer {api_key}',
+        'HTTP-Referer': 'https://github.com/industry-analysis-yao/industry-report',
+        'X-Title': 'Industry Analysis Report',
+        'Content-Type': 'application/json',
+    }
+    last_error = None
+    for model in _OPENROUTER_MODELS:
+        payload = {
+            'model': model,
+            'messages': [{'role': 'user', 'content': prompt}],
+        }
         try:
-            response = client.models.generate_content(model=model, contents=contents)
-            _consecutive_503_404_failures = 0  # reset on success
-            time.sleep(GEMINI_THROTTLE_SECONDS)  # throttle between calls
-            return response
+            resp = requests.post(_OPENROUTER_BASE_URL, headers=headers, json=payload, timeout=30)
+            resp.raise_for_status()
+            return resp.json()['choices'][0]['message']['content'].strip()
         except Exception as e:
-            err_str = str(e)
-            err_lower = err_str.lower()
-            # Daily quota exhausted — only when the API explicitly confirms the daily cap.
-            # Switching keys is the only remedy; do NOT retry with the same key.
-            is_daily_quota = (
-                'limit: 0' in err_str
-                or '"limit":0' in err_str
-                or '"limit": 0' in err_str
-                or 'DAILY_LIMIT_EXCEEDED' in err_str
-                or 'daily limit' in err_lower
-                or 'per day' in err_lower
-            )
-            if is_daily_quota:
-                raise DailyQuotaExhausted(err_str) from e
-            # 503 / 404 — count consecutive failures and trip circuit breaker if threshold reached
-            is_service_error = '503' in err_str or '404' in err_str
-            if is_service_error:
-                _consecutive_503_404_failures += 1
-                print(
-                    f'  [SERVICE-ERROR] 503/404 response '
-                    f'(consecutive failures: {_consecutive_503_404_failures}/{CIRCUIT_BREAKER_THRESHOLD}): '
-                    f'{err_str[:120]}'
-                )
-                if _consecutive_503_404_failures >= CIRCUIT_BREAKER_THRESHOLD:
-                    raise CircuitBreakerTripped(
-                        f'{CIRCUIT_BREAKER_THRESHOLD} consecutive 503/404 errors — aborting.'
-                    ) from e
-            # 429 / transient rate-limiting — sleep and retry (never for daily quota)
-            is_rate_limit = (
-                '429' in err_str
-                or 'RESOURCE_EXHAUSTED' in err_str
-            )
-            if is_rate_limit and attempt < MAX_429_RETRIES:
-                print(
-                    f'  [429] Rate limited (attempt {attempt + 1}/{MAX_429_RETRIES}). '
-                    f'Waiting {GEMINI_429_WAIT_SECONDS}s before retry...'
-                )
-                time.sleep(GEMINI_429_WAIT_SECONDS)
-            else:
-                raise
+            print(f'  [OPENROUTER] {model} failed: {e}')
+            last_error = e
+    raise last_error if last_error else RuntimeError('All OpenRouter models failed')
 
 
 # ============================================================
@@ -178,16 +163,38 @@ def ai_summarize(title, snippet, company, api_key, retry_feedback=None):
             f'本文スニペット: {clean_snippet}\n\n'
             f'出力（「IRRELEVANT」またはサマリー日本語のみ）:'
         )
+
+        # ── Waterfall: Tier 1 → Tier 2 → Tier 3 ──────────────────────────
+        text = None
+        # Tier 1: Direct — Google Gemini 2.5 Flash
         try:
             response = _gemini_generate(client, 'gemini-2.5-flash', prompt)
-        except Exception as primary_err:
-            print(f'  [FALLBACK-TRIGGERED] gemini-2.5-flash failed: {primary_err}. Retrying with gemini-1.5-flash-latest...')
-            response = _gemini_generate(client, 'gemini-1.5-flash-latest', prompt)
-        text = response.text.strip()
-        if text.strip().upper() == 'IRRELEVANT':
+            text = response.text.strip()
+        except DailyQuotaExhausted:
+            raise  # propagate so main() can rotate keys
+        except Exception as e1:
+            print(f'  [TIER1-FAIL] gemini-2.5-flash: {e1}. Trying Tier 2...')
+            # Tier 2: Direct Fallback — Google Gemini 1.5-flash-latest
+            try:
+                response = _gemini_generate(client, 'gemini-1.5-flash-latest', prompt)
+                text = response.text.strip()
+            except DailyQuotaExhausted:
+                raise
+            except Exception as e2:
+                print(f'  [TIER2-FAIL] gemini-1.5-flash-latest: {e2}. Trying Tier 3 (OpenRouter)...')
+                # Tier 3: OpenRouter
+                try:
+                    text = _openrouter_generate(prompt)
+                except Exception as e3:
+                    print(f'  [TIER3-FAIL] OpenRouter: {e3}. Marking as "AI Summary Pending".')
+                    return True, 'AI Summary Pending'
+
+        if text and text.strip().upper() == 'IRRELEVANT':
             print(f'  [AI-IRRELEVANT] {title[:60]}')
             return False, None
-        return True, text[:300]
+        return True, (text or '')[:300]
+    except DailyQuotaExhausted:
+        raise
     except Exception as e:
         print(f'  Gemini error for "{title[:40]}...": {e}')
         return True, None
@@ -242,12 +249,32 @@ def audit_item(title, summary, company, api_key):
             f'タイトル: {title}\n'
             f'要約: {summary}\n'
         )
+
+        # ── Waterfall: Tier 1 → Tier 2 → Tier 3 ──────────────────────────
+        text = None
+        # Tier 1: Direct — Google Gemini 2.5 Flash
         try:
             response = _gemini_generate(client, 'gemini-2.5-flash', prompt)
-        except Exception as primary_err:
-            print(f'  [FALLBACK-TRIGGERED] gemini-2.5-flash failed: {primary_err}. Retrying with gemini-1.5-flash-latest...')
-            response = _gemini_generate(client, 'gemini-1.5-flash-latest', prompt)
-        text = response.text.strip()
+            text = response.text.strip()
+        except DailyQuotaExhausted:
+            raise
+        except Exception as e1:
+            print(f'  [TIER1-FAIL] gemini-2.5-flash: {e1}. Trying Tier 2...')
+            # Tier 2: Direct Fallback — Google Gemini 1.5-flash-latest
+            try:
+                response = _gemini_generate(client, 'gemini-1.5-flash-latest', prompt)
+                text = response.text.strip()
+            except DailyQuotaExhausted:
+                raise
+            except Exception as e2:
+                print(f'  [TIER2-FAIL] gemini-1.5-flash-latest: {e2}. Trying Tier 3 (OpenRouter)...')
+                # Tier 3: OpenRouter
+                try:
+                    text = _openrouter_generate(prompt)
+                except Exception as e3:
+                    print(f'  [TIER3-FAIL] OpenRouter: {e3}. Skipping audit.')
+                    return 0, '', None
+
         text = re.sub(r'^```(?:json)?\s*', '', text)
         text = re.sub(r'\s*```$', '', text)
         result = json.loads(text)
@@ -256,6 +283,8 @@ def audit_item(title, summary, company, api_key):
         impact_analysis = (result.get('impact_analysis') or '')[:300]
         formatting_feedback = result.get('formatting_feedback') or None
         return score, impact_analysis, formatting_feedback
+    except DailyQuotaExhausted:
+        raise
     except Exception as e:
         print(f'  Audit error for "{title[:40]}...": {e}')
         return 0, '', None
@@ -469,6 +498,10 @@ def main():
         if has_quality_summary and has_score and has_impact:
             idx += 1
             continue
+        # Skip items already marked pending in this run — all tiers failed earlier
+        if summary == 'AI Summary Pending':
+            idx += 1
+            continue
 
         if not active_key:
             # No API key — assign defaults so all items have required fields
@@ -481,9 +514,6 @@ def main():
 
         try:
             is_relevant = process_item_with_retry(item, active_key)
-        except CircuitBreakerTripped as e:
-            print(f'  [CIRCUIT BREAKER] {e} Saving progress and exiting.')
-            break
         except DailyQuotaExhausted:
             exhausted_idx = key_idx
             key_idx += 1
