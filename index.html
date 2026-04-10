@@ -938,7 +938,7 @@ function initGrids() {
   updateFilterCount('fc-research', research.length);
 
   var patentRd = dedupeByUrl(DATA.filter(function(d) { return d.info_type === '特許' || d.info_type === '研究開発'; }));
-  document.getElementById('patent-count').textContent = patentRd.length + PATENTS.length;
+  document.getElementById('patent-count').textContent = dedupeByUrl(patentRd.concat(PATENTS)).length;
 }
 
 // ============================================================

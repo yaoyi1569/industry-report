@@ -16,6 +16,9 @@ try:
 except ImportError:
     pass
 
+# Number of days to restrict Google Custom Search results to
+DATE_RESTRICT_DAYS = 10
+
 # Search queries for the industry — full coverage across all five product segments
 SEARCH_QUERIES = [
     # Competitor / Market Intelligence — Segment A
@@ -174,7 +177,7 @@ def fetch_from_google_cse(query, api_key, cse_id, num=10):
         'num': num,
         'lr': 'lang_ja',
         'sort': 'date',
-        'dateRestrict': 'd10',
+        'dateRestrict': f'd{DATE_RESTRICT_DAYS}',
     }
     try:
         resp = requests.get(url, params=params, timeout=15)
@@ -343,7 +346,7 @@ if __name__ == '__main__':
 
     new_items = fetch_news()
     if not new_items:
-        print('No recent news found (last 10 days).')
+        print(f'No recent news found (last {DATE_RESTRICT_DAYS} days).')
     appended = 0
     for item in new_items:
         if appended >= 40:
