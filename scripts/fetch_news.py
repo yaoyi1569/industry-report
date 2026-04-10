@@ -61,11 +61,19 @@ SEARCH_QUERIES = [
 
 # Academic & Patent queries — Bucket C (J-STAGE / Google Scholar / patents only)
 ACADEMIC_QUERIES = [
-    'site:jstage.jst.go.jp ティッシュ OR 不織布 OR 吸収体 OR おむつ OR 衛生用品',
-    'site:jstage.jst.go.jp tissue OR nonwoven OR absorbent OR hygiene paper',
-    'site:patents.google.com 不織布 吸収体 おむつ OR ティシュー OR 衛生用品',
-    'site:patents.google.com nonwoven absorbent diaper OR tissue OR hygiene',
-    'scholar.google.com 不織布 OR 吸収体 OR おむつ 技術 OR 研究 OR 開発',
+    # Group 1: Direct Paper Competitors (Tissue & Towels)
+    # Focus: Oji Holdings/Nepia, Nippon Paper/Crecia, Kamishoji — excluding Daio Paper
+    'site:jstage.jst.go.jp ("王子ホールディングス" OR "王子ネピア" OR "日本製紙" OR "日本製紙クレシア" OR "カミ商事") ("ティッシュ" OR "タオル" OR "パルプ") (特許 OR 発明 OR 新技術) -"大王製紙"',
+    'site:patents.google.com ("王子ホールディングス" OR "王子ネピア" OR "日本製紙" OR "日本製紙クレシア") ("ティッシュ" OR "タオル" OR "パルプ") -"大王製紙"',
+
+    # Group 2: Hygiene & Sanitary Competitors (Diapers & Napkins)
+    # Focus: Unicharm, Kao, P&G technical papers on non-woven fabrics and absorbents
+    'site:jstage.jst.go.jp ("ユニ・チャーム" OR "花王" OR "P&G") ("不織布" OR "おむつ" OR "生理用品" OR "吸収体") (特許 OR 発明 OR 新技術) -"大王製紙"',
+    'site:patents.google.com ("ユニ・チャーム" OR "花王" OR "P&G") ("不織布" OR "おむつ" OR "生理用品" OR "吸収体") -"大王製紙"',
+
+    # Group 3: Process & Equipment Innovation (Smaller innovative rivals)
+    # Focus: Tokushu Tokai Paper and Marufuji Paper manufacturing process papers
+    'site:jstage.jst.go.jp ("特種東海製紙" OR "丸富製紙") ("加工技術" OR "包装" OR "省エネルギー") (特許 OR 発明 OR 新技術) -"大王製紙"',
 ]
 
 # Core tissue/hygiene terms — at least one must appear in title+snippet
