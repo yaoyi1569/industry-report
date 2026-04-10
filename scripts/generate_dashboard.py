@@ -16,6 +16,10 @@ try:
 except ImportError:
     GENAI_AVAILABLE = False
 
+class DailyQuotaExhausted(Exception):
+    """Raised when a Gemini API key has hit its daily quota (limit: 0)."""
+
+
 # Maximum retry attempts for high-value items that fail the formatting check
 MAX_RETRIES = 3
 # Items with a score above this threshold are retried if formatting is poor
@@ -61,6 +65,14 @@ def _gemini_generate(client, model, contents):
             return response
         except Exception as e:
             err_str = str(e)
+            # Daily quota exhausted — switching keys is the only remedy
+            is_daily_quota = (
+                'limit: 0' in err_str
+                or '"limit":0' in err_str
+                or '"limit": 0' in err_str
+            )
+            if is_daily_quota:
+                raise DailyQuotaExhausted(err_str) from e
             is_rate_limit = (
                 '429' in err_str
                 or 'RESOURCE_EXHAUSTED' in err_str
@@ -332,8 +344,11 @@ def main():
     data_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'news_data.json')
     data_path = os.path.normpath(data_path)
 
-    api_key = os.environ.get('GEMINI_API_KEY', '')
-    if not api_key:
+    api_key_1 = os.environ.get('GEMINI_API_KEY', '')
+    api_key_2 = os.environ.get('GEMINI_API_KEY_2', '')
+    api_keys = [k for k in [api_key_1, api_key_2] if k]
+
+    if not api_keys:
         print('WARNING: GEMINI_API_KEY not set. Summaries and scores will not be updated.')
 
     data, last_updated, existing_highlights = load_data(data_path)
@@ -356,9 +371,18 @@ def main():
         print(f'Deduplication removed {len(data) - len(deduped)} duplicate items.')
     data = deduped
 
+    # Active API key management
+    key_idx = 0
+    active_key = api_keys[key_idx] if api_keys else ''
+
     updated = 0
     irrelevant_indices = []
-    for idx, item in enumerate(data):
+    both_keys_exhausted = False
+
+    idx = 0
+    while idx < len(data):
+        item = data[idx]
+
         # Strip HTML from existing summary
         summary = strip_html(item.get('summary', ''))
         if item.get('summary', '') != summary:
@@ -369,21 +393,43 @@ def main():
         has_score = (item.get('score') is not None) and (item.get('score', 0) > 0)
         has_impact = bool(item.get('impact_analysis'))
         if has_quality_summary and has_score and has_impact:
+            idx += 1
             continue
 
-        if not api_key:
+        if not active_key:
             # No API key — assign defaults so all items have required fields
             if not has_score:
                 item['score'] = 0
             if not has_impact:
                 item['impact_analysis'] = ''
+            idx += 1
             continue
 
-        is_relevant = process_item_with_retry(item, api_key)
+        try:
+            is_relevant = process_item_with_retry(item, active_key)
+        except DailyQuotaExhausted:
+            exhausted_idx = key_idx
+            key_idx += 1
+            if key_idx >= len(api_keys):
+                print(
+                    f'  [QUOTA] All {len(api_keys)} API key(s) have hit the daily quota. '
+                    'Saving progress and exiting.'
+                )
+                both_keys_exhausted = True
+                break
+            active_key = api_keys[key_idx]
+            print(
+                f'  [QUOTA] Key {exhausted_idx + 1} exhausted. Switched to API key {key_idx + 1}. '
+                'Retrying current item...'
+            )
+            # Retry the same item with the new key (do not advance idx)
+            continue
+
         if not is_relevant:
             irrelevant_indices.append(idx)
         else:
             updated += 1
+        idx += 1
 
     # Remove items flagged as irrelevant (in reverse order to preserve indices)
     for idx in sorted(irrelevant_indices, reverse=True):
@@ -446,7 +492,7 @@ def main():
     today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     today_items = [item for item in data if item.get('date', '') == today]
     source_items = today_items if today_items else data
-    highlights = generate_highlights(source_items, api_key) if source_items else existing_highlights
+    highlights = generate_highlights(source_items, active_key) if source_items else existing_highlights
     if not highlights:
         highlights = existing_highlights
 
@@ -455,6 +501,8 @@ def main():
         f'Updated {updated} items. Highlights: {len(highlights)}. '
         f'Total items saved: {len(data)}'
     )
+    if both_keys_exhausted:
+        print('NOTE: Saved partial progress due to daily quota exhaustion on all API keys.')
 
 
 if __name__ == '__main__':
