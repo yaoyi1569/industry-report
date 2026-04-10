@@ -174,14 +174,14 @@ def ai_summarize(title, snippet, company, api_key, retry_feedback=None):
             raise  # propagate so main() can rotate keys
         except Exception as e1:
             print(f'  [TIER1-FAIL] gemini-2.5-flash: {e1}. Trying Tier 2...')
-            # Tier 2: Direct Fallback — Google Gemini 1.5-flash-latest
+            # Tier 2: Direct Fallback — Google Gemini 1.5-flash
             try:
-                response = _gemini_generate(client, 'gemini-1.5-flash-latest', prompt)
+                response = _gemini_generate(client, 'gemini-1.5-flash', prompt)
                 text = response.text.strip()
             except DailyQuotaExhausted:
                 raise
             except Exception as e2:
-                print(f'  [TIER2-FAIL] gemini-1.5-flash-latest: {e2}. Trying Tier 3 (OpenRouter)...')
+                print(f'  [TIER2-FAIL] gemini-1.5-flash: {e2}. Trying Tier 3 (OpenRouter)...')
                 # Tier 3: OpenRouter
                 try:
                     text = _openrouter_generate(prompt)
@@ -260,14 +260,14 @@ def audit_item(title, summary, company, api_key):
             raise
         except Exception as e1:
             print(f'  [TIER1-FAIL] gemini-2.5-flash: {e1}. Trying Tier 2...')
-            # Tier 2: Direct Fallback — Google Gemini 1.5-flash-latest
+            # Tier 2: Direct Fallback — Google Gemini 1.5-flash
             try:
-                response = _gemini_generate(client, 'gemini-1.5-flash-latest', prompt)
+                response = _gemini_generate(client, 'gemini-1.5-flash', prompt)
                 text = response.text.strip()
             except DailyQuotaExhausted:
                 raise
             except Exception as e2:
-                print(f'  [TIER2-FAIL] gemini-1.5-flash-latest: {e2}. Trying Tier 3 (OpenRouter)...')
+                print(f'  [TIER2-FAIL] gemini-1.5-flash: {e2}. Trying Tier 3 (OpenRouter)...')
                 # Tier 3: OpenRouter
                 try:
                     text = _openrouter_generate(prompt)
