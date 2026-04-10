@@ -65,23 +65,28 @@ def _gemini_generate(client, model, contents):
             return response
         except Exception as e:
             err_str = str(e)
-            # Daily quota exhausted — switching keys is the only remedy
+            err_lower = err_str.lower()
+            # Daily quota exhausted — only when the API explicitly confirms the daily cap.
+            # Switching keys is the only remedy; do NOT retry with the same key.
             is_daily_quota = (
                 'limit: 0' in err_str
                 or '"limit":0' in err_str
                 or '"limit": 0' in err_str
+                or 'DAILY_LIMIT_EXCEEDED' in err_str
+                or 'daily limit' in err_lower
+                or 'per day' in err_lower
             )
             if is_daily_quota:
                 raise DailyQuotaExhausted(err_str) from e
+            # 429 / transient rate-limiting — sleep and retry (never for daily quota)
             is_rate_limit = (
                 '429' in err_str
                 or 'RESOURCE_EXHAUSTED' in err_str
-                or 'quota' in err_str.lower()
             )
             if is_rate_limit and attempt < MAX_429_RETRIES:
                 print(
-                    f'  [429] Rate limited. Waiting {GEMINI_429_WAIT_SECONDS}s '
-                    f'before retry {attempt + 1}/{MAX_429_RETRIES}...'
+                    f'  [429] Rate limited (attempt {attempt + 1}/{MAX_429_RETRIES}). '
+                    f'Waiting {GEMINI_429_WAIT_SECONDS}s before retry...'
                 )
                 time.sleep(GEMINI_429_WAIT_SECONDS)
             else:
@@ -145,7 +150,7 @@ def ai_summarize(title, snippet, company, api_key, retry_feedback=None):
             f'本文スニペット: {clean_snippet}\n\n'
             f'出力（「IRRELEVANT」またはサマリー日本語のみ）:'
         )
-        response = _gemini_generate(client, 'gemini-2.0-flash', prompt)
+        response = _gemini_generate(client, 'gemini-1.5-flash', prompt)
         text = response.text.strip()
         if text.strip().upper() == 'IRRELEVANT':
             print(f'  [AI-IRRELEVANT] {title[:60]}')
@@ -205,7 +210,7 @@ def audit_item(title, summary, company, api_key):
             f'タイトル: {title}\n'
             f'要約: {summary}\n'
         )
-        response = _gemini_generate(client, 'gemini-2.0-flash', prompt)
+        response = _gemini_generate(client, 'gemini-1.5-flash', prompt)
         text = response.text.strip()
         text = re.sub(r'^```(?:json)?\s*', '', text)
         text = re.sub(r'\s*```$', '', text)
@@ -272,15 +277,20 @@ def process_item_with_retry(item, api_key):
             best_summary = current_summary
             best_impact = impact_analysis
 
-        if score > RETRY_SCORE_THRESHOLD and fmt_feedback:
+        # Force a retry whenever the summary is too short (<80 chars), regardless of
+        # score, or when a high-scoring item has formatting issues flagged by Agent B.
+        summary_too_short = len(current_summary) < 80
+        needs_retry = (summary_too_short or (score > RETRY_SCORE_THRESHOLD)) and fmt_feedback
+        if needs_retry and attempt < MAX_RETRIES - 1:
+            reason = 'short summary' if summary_too_short else f'score={score}'
             print(
-                f'  [RETRY {attempt + 1}/{MAX_RETRIES}] score={score}, '
+                f'  [RETRY {attempt + 1}/{MAX_RETRIES - 1}] {reason}, '
                 f'feedback: {fmt_feedback[:80]}'
             )
             feedback = fmt_feedback
             # Loop again with the feedback
         else:
-            # Acceptable quality or low score — no retry needed
+            # Acceptable quality or last attempt — keep best result
             break
 
     item['summary'] = best_summary or '分析待ち'
@@ -419,8 +429,8 @@ def main():
                 break
             active_key = api_keys[key_idx]
             print(
-                f'  [QUOTA] Key {exhausted_idx + 1} exhausted. Switched to API key {key_idx + 1}. '
-                'Retrying current item...'
+                f'  [QUOTA] Key index {exhausted_idx} exhausted (daily limit reached). '
+                f'Switching to key index {key_idx}. Retrying current item (idx={idx})...'
             )
             # Retry the same item with the new key (do not advance idx)
             continue
