@@ -150,7 +150,11 @@ def ai_summarize(title, snippet, company, api_key, retry_feedback=None):
             f'本文スニペット: {clean_snippet}\n\n'
             f'出力（「IRRELEVANT」またはサマリー日本語のみ）:'
         )
-        response = _gemini_generate(client, 'gemini-2.5-flash', prompt)
+        try:
+            response = _gemini_generate(client, 'gemini-2.5-flash', prompt)
+        except Exception as primary_err:
+            print(f'  [FALLBACK-A] gemini-2.5-flash failed: {primary_err}. Retrying with gemini-1.5-flash...')
+            response = _gemini_generate(client, 'gemini-1.5-flash', prompt)
         text = response.text.strip()
         if text.strip().upper() == 'IRRELEVANT':
             print(f'  [AI-IRRELEVANT] {title[:60]}')
@@ -210,7 +214,11 @@ def audit_item(title, summary, company, api_key):
             f'タイトル: {title}\n'
             f'要約: {summary}\n'
         )
-        response = _gemini_generate(client, 'gemini-2.5-flash', prompt)
+        try:
+            response = _gemini_generate(client, 'gemini-2.5-flash', prompt)
+        except Exception as primary_err:
+            print(f'  [FALLBACK-B] gemini-2.5-flash failed: {primary_err}. Retrying with gemini-1.5-flash...')
+            response = _gemini_generate(client, 'gemini-1.5-flash', prompt)
         text = response.text.strip()
         text = re.sub(r'^```(?:json)?\s*', '', text)
         text = re.sub(r'\s*```$', '', text)
