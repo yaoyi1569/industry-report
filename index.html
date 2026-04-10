@@ -637,10 +637,11 @@ function filterCards(gridId, kw, cat, type) {
     const matchType = !type || item.info_type === type;
     return matchKw && matchCat && matchType;
   });
-  // Deduplicate by URL to ensure unique article IDs
+  // Deduplicate by URL to ensure unique article IDs; items without a URL are kept as-is
   const seenUrls = new Set();
   const uniqueFiltered = filtered.filter(item => {
-    const key = item.url || item.title || '';
+    const key = item.url || '';
+    if (!key) return true;
     if (seenUrls.has(key)) return false;
     seenUrls.add(key);
     return true;
@@ -655,7 +656,7 @@ function filterCards(gridId, kw, cat, type) {
   const sectionKey = gridId.replace('grid-', '');
   if (sectionKey === 'overview') {
     const cnt = document.getElementById('cnt-overview');
-    if (cnt) cnt.textContent = new Set(DATA.map(d => d.url || d.title || '')).size;
+    if (cnt) cnt.textContent = dedupeByUrl(DATA).length;
   } else {
     const cnt = document.getElementById('cnt-' + sectionKey);
     if (cnt) cnt.textContent = uniqueFiltered.length;
@@ -772,59 +773,73 @@ function renderHighlights(highlights) {
 // ============================================================
 // INIT GRIDS
 // ============================================================
+// Deduplicate an array of items by URL, returning unique items only.
+// Items without a URL are always kept (they cannot be reliably deduplicated).
+function dedupeByUrl(arr) {
+  var seen = new Set();
+  return arr.filter(function(d) {
+    var key = d.url || '';
+    if (!key) return true;  // no URL — keep unconditionally
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function initGrids() {
-  paginateGrid('grid-overview', DATA);
+  var uniqueData = dedupeByUrl(DATA);
+  paginateGrid('grid-overview', uniqueData);
 
   // Total count = unique items stored (deduplicated by URL)
-  const uniqueTotal = new Set(DATA.map(function(d) { return d.url || d.title || ''; })).size;
+  var uniqueTotal = uniqueData.length;
   var totalEl = document.getElementById('total-count');
   if (totalEl) totalEl.textContent = uniqueTotal;
   var companyEl = document.getElementById('company-count');
   if (companyEl) {
-    var uniqueCompanies = new Set(DATA.map(function(d) { return d.company; }).filter(function(c) { return c && c !== '不明'; }));
+    var uniqueCompanies = new Set(uniqueData.map(function(d) { return d.company; }).filter(function(c) { return c && c !== '不明'; }));
     companyEl.textContent = uniqueCompanies.size;
   }
   var cntOverview = document.getElementById('cnt-overview');
   if (cntOverview) cntOverview.textContent = uniqueTotal;
 
-  var rivals = DATA.filter(function(d) { return d.category_id === '①' || d.category_id === '②'; });
+  var rivals = dedupeByUrl(DATA.filter(function(d) { return d.category_id === '①' || d.category_id === '②'; }));
   paginateGrid('grid-rivals', rivals);
   document.getElementById('cnt-rivals').textContent = rivals.length;
 
-  var machine = DATA.filter(function(d) { return d.category_id === '③'; });
+  var machine = dedupeByUrl(DATA.filter(function(d) { return d.category_id === '③'; }));
   paginateGrid('grid-machine', machine);
   document.getElementById('cnt-machine').textContent = machine.length;
 
   var packagingKw = ['包装', 'パッケージ', 'フィル', 'OPTIMA', 'optima', '充填', '袋', 'ライン'];
-  var packaging = DATA.filter(function(d) {
+  var packaging = dedupeByUrl(DATA.filter(function(d) {
     return d.category_id === '④' && (d.info_type === '包装機技術' || packagingKw.some(function(k) { return d.title.includes(k) || d.summary.includes(k); }));
-  });
+  }));
   paginateGrid('grid-packaging', packaging);
   document.getElementById('cnt-packaging').textContent = packaging.length;
 
   var palletizerKw = ['パレタイ', 'ロボット', 'robot', 'ファナック', 'FANUC', '自動化', 'automation'];
-  var palletizer = DATA.filter(function(d) {
+  var palletizer = dedupeByUrl(DATA.filter(function(d) {
     return d.category_id === '④' && (palletizerKw.some(function(k) { return d.title.toLowerCase().includes(k.toLowerCase()) || d.summary.toLowerCase().includes(k.toLowerCase()); }) || d.company === 'ファナック');
-  });
+  }));
   paginateGrid('grid-palletizer', palletizer);
   document.getElementById('cnt-palletizer').textContent = palletizer.length;
 
-  var tissue = DATA.filter(function(d) { return d.category_id === '⑥'; });
+  var tissue = dedupeByUrl(DATA.filter(function(d) { return d.category_id === '⑥'; }));
   paginateGrid('grid-tissue', tissue);
   document.getElementById('cnt-tissue').textContent = tissue.length;
 
-  var wet = DATA.filter(function(d) { return d.category_id === '⑤'; });
+  var wet = dedupeByUrl(DATA.filter(function(d) { return d.category_id === '⑤'; }));
   paginateGrid('grid-wet', wet);
   document.getElementById('cnt-wet').textContent = wet.length;
 
   var toiletKw = ['トイレット', 'トイレ', '家庭紙', 'ティシュ', 'ティッシュ', 'tissue', 'Tissue', '家庭紙工業', '衛生用紙'];
-  var toilet = DATA.filter(function(d) {
+  var toilet = dedupeByUrl(DATA.filter(function(d) {
     return toiletKw.some(function(k) { return d.title.includes(k) || d.summary.includes(k) || d.category_name.includes(k); });
-  });
+  }));
   paginateGrid('grid-toilet', toilet);
   document.getElementById('cnt-toilet').textContent = toilet.length;
 
-  var patent = DATA.filter(function(d) { return d.info_type === '特許'; });
+  var patent = dedupeByUrl(DATA.filter(function(d) { return d.info_type === '特許'; }));
   if (patent.length === 0) {
     document.getElementById('empty-patent').style.display = 'block';
     document.getElementById('grid-patent').innerHTML = '';
@@ -834,7 +849,7 @@ function initGrids() {
   document.getElementById('cnt-patent').textContent = patent.length || '0';
   updateFilterCount('fc-patent', patent.length);
 
-  var research = DATA.filter(function(d) { return d.info_type === '研究開発'; });
+  var research = dedupeByUrl(DATA.filter(function(d) { return d.info_type === '研究開発'; }));
   if (research.length === 0) {
     document.getElementById('empty-research').style.display = 'block';
     document.getElementById('grid-research').innerHTML = '';
@@ -845,7 +860,7 @@ function initGrids() {
   document.getElementById('cnt-research').textContent = research.length || '0';
   updateFilterCount('fc-research', research.length);
 
-  var patentRd = DATA.filter(function(d) { return d.info_type === '特許' || d.info_type === '研究開発'; });
+  var patentRd = dedupeByUrl(DATA.filter(function(d) { return d.info_type === '特許' || d.info_type === '研究開発'; }));
   document.getElementById('patent-count').textContent = patentRd.length;
 }
 
