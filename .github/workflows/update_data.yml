@@ -2,8 +2,8 @@ name: Update Dashboard Data
 
 on:
   schedule:
-    # Daily at 22:00 UTC = 07:00 JST (UTC+9)
-    - cron: '0 22 * * *'
+    # Daily at 08:00 UTC = 17:00 JST (UTC+9)
+    - cron: '0 8 * * *'
   workflow_dispatch:
 
 jobs:
