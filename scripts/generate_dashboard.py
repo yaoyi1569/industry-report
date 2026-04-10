@@ -115,7 +115,7 @@ def ai_summarize(title, snippet, company, api_key, retry_feedback=None):
         print(f'  [SKIP paywall/no-body] {title[:60]}')
         return False, None
     try:
-        client = google_genai.Client(api_key=api_key)
+        client = google_genai.Client(api_key=api_key, http_options={'api_version': 'v1beta'})
 
         retry_section = ''
         if retry_feedback:
@@ -150,7 +150,7 @@ def ai_summarize(title, snippet, company, api_key, retry_feedback=None):
             f'本文スニペット: {clean_snippet}\n\n'
             f'出力（「IRRELEVANT」またはサマリー日本語のみ）:'
         )
-        response = _gemini_generate(client, 'gemini-1.5-flash', prompt)
+        response = _gemini_generate(client, 'gemini-1.5-flash-latest', prompt)
         text = response.text.strip()
         if text.strip().upper() == 'IRRELEVANT':
             print(f'  [AI-IRRELEVANT] {title[:60]}')
@@ -175,7 +175,7 @@ def audit_item(title, summary, company, api_key):
     if not GENAI_AVAILABLE or not api_key:
         return 0, '', None
     try:
-        client = google_genai.Client(api_key=api_key)
+        client = google_genai.Client(api_key=api_key, http_options={'api_version': 'v1beta'})
         prompt = (
             'あなたは大王製紙の最上席研究開発ディレクターです。業界歴30年以上、競合他社の技術動向・'
             '市場変化・設備投資・研究開発に精通した、業界随一の厳格な審査官として行動してください。\n\n'
@@ -210,7 +210,7 @@ def audit_item(title, summary, company, api_key):
             f'タイトル: {title}\n'
             f'要約: {summary}\n'
         )
-        response = _gemini_generate(client, 'gemini-1.5-flash', prompt)
+        response = _gemini_generate(client, 'gemini-1.5-flash-latest', prompt)
         text = response.text.strip()
         text = re.sub(r'^```(?:json)?\s*', '', text)
         text = re.sub(r'\s*```$', '', text)
