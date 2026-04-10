@@ -27,7 +27,7 @@ RETRY_SCORE_THRESHOLD = 80
 
 # OpenRouter configuration
 _OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1/chat/completions'
-_OPENROUTER_MODELS = ['google/gemini-flash-1.5', 'deepseek/deepseek-chat']
+_OPENROUTER_MODELS = ['deepseek/deepseek-chat', 'google/gemini-flash-1.5']
 
 # 20+20 bucket quota — top 20 from each bucket → 40 items total
 BUCKET_QUOTA = 20
