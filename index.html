@@ -63,7 +63,7 @@
   .nav-item:hover { background: rgba(59,130,246,0.1); color: #e2e8f0; border-left-color: var(--accent); }
   .nav-item.active { background: rgba(59,130,246,0.15); color: #fff; border-left-color: var(--accent); font-weight: 600; }
   .nav-icon { font-size: 16px; width: 20px; text-align: center; }
-  .nav-count { margin-left: auto; background: rgba(59,130,246,0.3); color: var(--accent-light); font-size: 11px; padding: 1px 6px; border-radius: 10px; }
+  .nav-count { margin-left: auto; background: rgba(59,130,246,0.3); color: var(--accent-light); font-size: 11px; padding: 1px 6px; border-radius: 10px; min-width: 35px; text-align: right; }
 
   /* MAIN */
   main {
@@ -499,9 +499,10 @@
 // ============================================================
 let DATA = [];      // items for the currently selected date
 let PATENTS = [];   // permanent patent archive (all dates)
-let DATES = {};     // {YYYY-MM-DD: [items]}
+let DATES = {};     // {YYYY-MM-DD: [items] | null}  null = placeholder (not yet loaded)
 let SORTED_DATES = []; // dates sorted newest-first
 let SELECTED_DATE_IDX = 0;
+let VAULT = [];     // permanent_vault.json — all Bucket C items across all dates
 
 // ============================================================
 // BADGE MAPPING
@@ -694,11 +695,40 @@ function filterCards(gridId, kw, cat, type) {
 // ============================================================
 // DATE NAVIGATION
 // ============================================================
+
+// Fetch a per-date JSON file on demand; calls callback(items) when ready.
+// Uses cached DATES[dateStr] if already loaded.
+function loadDateData(dateStr, callback) {
+  if (DATES[dateStr] && DATES[dateStr] !== null) {
+    callback(DATES[dateStr]);
+    return;
+  }
+  fetch('data/' + dateStr + '.json')
+    .then(function(r) { if (!r.ok) throw new Error('not found'); return r.json(); })
+    .then(function(dateData) {
+      var items = dateData.items || [];
+      items.sort(function(a, b) {
+        var sd = (b.score || 0) - (a.score || 0);
+        return sd !== 0 ? sd : (b.date || '').localeCompare(a.date || '');
+      });
+      DATES[dateStr] = items;
+      callback(items);
+    })
+    .catch(function() {
+      // Fall back to empty array if file not available
+      DATES[dateStr] = DATES[dateStr] || [];
+      callback(DATES[dateStr] || []);
+    });
+}
+
 function navigateDate(delta) {
   SELECTED_DATE_IDX = Math.max(0, Math.min(SORTED_DATES.length - 1, SELECTED_DATE_IDX + delta));
   updateDateNav();
-  DATA = DATES[SORTED_DATES[SELECTED_DATE_IDX]] || [];
-  initGrids();
+  var date = SORTED_DATES[SELECTED_DATE_IDX];
+  loadDateData(date, function(items) {
+    DATA = items;
+    initGrids();
+  });
 }
 
 function selectDate(dateStr) {
@@ -706,8 +736,10 @@ function selectDate(dateStr) {
   if (idx >= 0) {
     SELECTED_DATE_IDX = idx;
     updateDateNav();
-    DATA = DATES[dateStr] || [];
-    initGrids();
+    loadDateData(dateStr, function(items) {
+      DATA = items;
+      initGrids();
+    });
   }
 }
 
@@ -825,6 +857,7 @@ function renderHighlights(highlights) {
         date: d.date || '',
         impact: d.impact_analysis || d.summary || d.title || '',
         score: d.score || 0,
+        is_patent: d.permanent_record || d.info_type === '特許' || d.is_academic || false,
       };
     });
   }
@@ -833,10 +866,11 @@ function renderHighlights(highlights) {
   container.innerHTML = highlights.map(function(h, i) {
     var rank = RANK_ICONS[i] || '🏅';
     var scoreHtml = h.score
-      ? ' <span style="background:rgba(239,68,68,0.3);color:#fca5a5;padding:1px 6px;border-radius:10px;font-size:11px;">' + h.score + '点</span>'
+      ? ' <span style="background:rgba(239,68,68,0.3);color:#fca5a5;padding:1px 6px;border-radius:10px;font-size:11px;">Score: ' + h.score + '/100</span>'
       : '';
+    var patentIcon = h.is_patent ? ' 🔬' : '';
     return '<div class="highlight-card">'
-      + '<div class="highlight-card-rank">' + rank + scoreHtml + '</div>'
+      + '<div class="highlight-card-rank">' + rank + scoreHtml + patentIcon + '</div>'
       + '<div class="highlight-card-title">' + (h.title || '') + '</div>'
       + '<div class="highlight-card-company">📌 ' + (h.category || '') + ' ／ ' + (h.date || '') + '</div>'
       + '<div class="highlight-card-impact">⚡ ' + (h.impact || '') + '</div>'
@@ -913,9 +947,10 @@ function initGrids() {
   paginateGrid('grid-toilet', toilet);
   document.getElementById('cnt-toilet').textContent = toilet.length;
 
-  // Patent section: permanent archive (PATENTS) merged with any patents in current date
+  // Patent section: VAULT (permanent Bucket C archive) merged with any patents in current date
   var datePatents = dedupeByUrl(DATA.filter(function(d) { return d.info_type === '特許'; }));
-  var allPatents = dedupeByUrl(PATENTS.concat(datePatents));
+  var vaultPatents = dedupeByUrl(VAULT.filter(function(d) { return d.info_type === '特許' || d.permanent_record; }));
+  var allPatents = dedupeByUrl(vaultPatents.concat(PATENTS).concat(datePatents));
   if (allPatents.length === 0) {
     document.getElementById('empty-patent').style.display = 'block';
     document.getElementById('grid-patent').innerHTML = '';
@@ -926,19 +961,22 @@ function initGrids() {
   document.getElementById('cnt-patent').textContent = allPatents.length || '0';
   updateFilterCount('fc-patent', allPatents.length);
 
-  var research = dedupeByUrl(DATA.filter(function(d) { return d.info_type === '研究開発'; }));
-  if (research.length === 0) {
+  // Research (Academic) section: VAULT academic items merged with current date's research
+  var dateResearch = dedupeByUrl(DATA.filter(function(d) { return d.info_type === '研究開発' || d.is_academic; }));
+  var vaultAcademic = dedupeByUrl(VAULT.filter(function(d) { return d.is_academic || d.category_id === '⑦' || d.info_type === '研究開発'; }));
+  var allResearch = dedupeByUrl(vaultAcademic.concat(dateResearch));
+  if (allResearch.length === 0) {
     document.getElementById('empty-research').style.display = 'block';
     document.getElementById('grid-research').innerHTML = '';
   } else {
-    paginateGrid('grid-research', research);
+    paginateGrid('grid-research', allResearch);
     document.getElementById('empty-research').style.display = 'none';
   }
-  document.getElementById('cnt-research').textContent = research.length || '0';
-  updateFilterCount('fc-research', research.length);
+  document.getElementById('cnt-research').textContent = allResearch.length || '0';
+  updateFilterCount('fc-research', allResearch.length);
 
-  var patentRd = dedupeByUrl(DATA.filter(function(d) { return d.info_type === '特許' || d.info_type === '研究開発'; }));
-  document.getElementById('patent-count').textContent = dedupeByUrl(patentRd.concat(PATENTS)).length;
+  var patentRd = dedupeByUrl(DATA.filter(function(d) { return d.info_type === '特許' || d.info_type === '研究開発' || d.is_academic; }));
+  document.getElementById('patent-count').textContent = dedupeByUrl(patentRd.concat(PATENTS).concat(VAULT)).length;
 }
 
 // ============================================================
@@ -946,13 +984,30 @@ function initGrids() {
 // ============================================================
 function init() {
   setTodayDate();
-  fetch('data/news_data.json')
+
+  var newsDataPromise = fetch('data/news_data.json')
     .then(function(resp) {
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       return resp.json();
     })
-    .then(function(json) {
+    .catch(function(e) { console.error('Error loading news_data.json:', e); return {}; });
+
+  var datesIndexPromise = fetch('data/dates_index.json')
+    .then(function(resp) { if (!resp.ok) return null; return resp.json(); })
+    .catch(function() { return null; });
+
+  var vaultPromise = fetch('data/permanent_vault.json')
+    .then(function(resp) { if (!resp.ok) return []; return resp.json(); })
+    .catch(function() { return []; });
+
+  Promise.all([newsDataPromise, datesIndexPromise, vaultPromise])
+    .then(function(results) {
+      var json = results[0];
+      var datesIndex = results[1];
+      var vault = results[2];
       var highlights;
+
+      VAULT = Array.isArray(vault) ? vault : [];
 
       if (Array.isArray(json)) {
         // Legacy bare-array format — group by date
@@ -973,7 +1028,7 @@ function init() {
         setLastUpdated(json.last_updated);
       } else {
         // Legacy {last_updated, highlights, items} format — group by date
-        var allItems = json.items || [];
+        var allItems = (json.items) || [];
         highlights = json.highlights || [];
         PATENTS = [];
         setLastUpdated(json.last_updated);
@@ -985,19 +1040,32 @@ function init() {
         });
       }
 
-      // Sort dates newest-first
-      SORTED_DATES = Object.keys(DATES).sort().reverse();
+      // Merge dates_index.json — adds any historical date placeholders not in DATES
+      if (datesIndex && Array.isArray(datesIndex)) {
+        datesIndex.forEach(function(d) {
+          if (!(d in DATES)) {
+            DATES[d] = null; // placeholder: will be fetched on demand
+          }
+        });
+        // dates_index is already sorted newest-first; use it as the canonical order
+        SORTED_DATES = datesIndex;
+      } else {
+        // Fall back to whatever dates we parsed from news_data.json
+        SORTED_DATES = Object.keys(DATES).sort().reverse();
+      }
       SELECTED_DATE_IDX = 0;
 
-      // Sort each date's items by score desc, then date desc
+      // Sort each already-loaded date's items by score desc, then date desc
       SORTED_DATES.forEach(function(d) {
-        DATES[d].sort(function(a, b) {
-          var sd = (b.score || 0) - (a.score || 0);
-          return sd !== 0 ? sd : (b.date || '').localeCompare(a.date || '');
-        });
+        if (DATES[d] && Array.isArray(DATES[d])) {
+          DATES[d].sort(function(a, b) {
+            var sd = (b.score || 0) - (a.score || 0);
+            return sd !== 0 ? sd : (b.date || '').localeCompare(a.date || '');
+          });
+        }
       });
 
-      // Set DATA to most recent date's items
+      // Set DATA to most recent date's items (guaranteed non-null — loaded from news_data.json)
       DATA = SORTED_DATES.length > 0 ? (DATES[SORTED_DATES[0]] || []) : [];
 
       buildDateSelect();
@@ -1006,9 +1074,10 @@ function init() {
       initGrids();
     })
     .catch(function(e) {
-      console.error('Error loading data/news_data.json:', e);
+      console.error('Error in init:', e);
       DATA = [];
       PATENTS = [];
+      VAULT = [];
       renderHighlights([]);
       initGrids();
     });

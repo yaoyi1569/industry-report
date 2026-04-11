@@ -94,6 +94,26 @@ def main():
     print(f'Removed {removed} items older than {CUTOFF_DAYS} days (before {cutoff_str}).')
     print(f'Regular items remaining: {total_regular}. Patents preserved: {len(payload["patents"])} (permanent_record).')
 
+    # ── Prune permanent_vault.json (90-day retention) ─────────────────────────
+    vault_path = os.path.join(os.path.dirname(data_path), 'permanent_vault.json')
+    if os.path.exists(vault_path):
+        with open(vault_path, 'r', encoding='utf-8') as f:
+            vault = json.load(f)
+        vault_kept = [
+            item for item in vault
+            if item.get('date', '9999-99-99') >= cutoff_str
+        ]
+        vault_removed = len(vault) - len(vault_kept)
+        if vault_removed > 0:
+            with open(vault_path, 'w', encoding='utf-8') as f:
+                json.dump(vault_kept, f, ensure_ascii=False, indent=2)
+            print(
+                f'Pruned {vault_removed} items from permanent_vault.json '
+                f'older than {CUTOFF_DAYS} days ({len(vault_kept)} retained).'
+            )
+        else:
+            print(f'permanent_vault.json: {len(vault_kept)} items retained (none pruned).')
+
 
 if __name__ == '__main__':
     main()
