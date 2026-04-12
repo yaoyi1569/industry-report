@@ -276,10 +276,11 @@ def fetch_from_google_news_rss(query, max_items=10):
         return []
 
 
-def fetch_news(existing_urls=None, use_rss_fallback=False):
+def fetch_news(existing_urls=None, use_rss_fallback=False, date_restrict_days=None):
     """Fetch industry news (Bucket A + B).
 
     Returns a list of new items; does NOT include academic/patent items.
+    *date_restrict_days* overrides DATE_RESTRICT_DAYS when broadening the search window.
     """
     api_key = os.environ.get('GOOGLE_API_KEY', '')
     cse_id = os.environ.get('GOOGLE_CSE_ID', '')
@@ -287,17 +288,18 @@ def fetch_news(existing_urls=None, use_rss_fallback=False):
     today = _today_jst()
     results = []
     _existing = existing_urls or set()
+    restrict_days = date_restrict_days or DATE_RESTRICT_DAYS
 
     if not api_key or not cse_id:
         print('WARNING: GOOGLE_API_KEY or GOOGLE_CSE_ID not set. Falling back to Google News RSS.')
         use_rss_fallback = True
 
     for query in SEARCH_QUERIES:
-        print(f'  Searching: {query}')
+        print(f'  Searching ({restrict_days}d): {query}')
         if use_rss_fallback:
             items = fetch_from_google_news_rss(query)
         else:
-            cse_items = fetch_from_google_cse(query, api_key, cse_id)
+            cse_items = fetch_from_google_cse(query, api_key, cse_id, date_restrict_days=restrict_days)
             if cse_items is None:
                 # None signals a fatal API error; switch to RSS for remaining queries
                 use_rss_fallback = True
@@ -593,7 +595,9 @@ if __name__ == '__main__':
 
         if total_a < QUOTA_INDUSTRY or total_b < QUOTA_MACHINE:
             extra_industry, rss_fallback = fetch_news(
-                existing_urls=existing_urls, use_rss_fallback=rss_fallback
+                existing_urls=existing_urls,
+                use_rss_fallback=rss_fallback,
+                date_restrict_days=window,
             )
             extra_a = [it for it in extra_industry if not is_machine_item(it)]
             extra_b = [it for it in extra_industry if is_machine_item(it)]
