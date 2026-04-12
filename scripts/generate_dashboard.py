@@ -516,7 +516,7 @@ def main():
         )
 
     updated = 0
-    items_to_remove: set = set()
+    irrelevant_items: list = []  # collect item references flagged as irrelevant
 
     for item in today_items:
         # Strip HTML from raw snippet saved by fetch_news.py
@@ -545,17 +545,18 @@ def main():
 
         is_relevant = process_item_with_retry(item, lenient_mode=lenient_mode)
         if not is_relevant:
-            items_to_remove.add(id(item))
+            irrelevant_items.append(item)
         else:
             updated += 1
 
     # Remove items flagged as irrelevant by AI
-    if items_to_remove:
-        for item in [it for it in today_items if id(it) in items_to_remove]:
+    if irrelevant_items:
+        irrelevant_ids = {id(it) for it in irrelevant_items}
+        for item in irrelevant_items:
             print(f'  Removing irrelevant item: {item.get("title", "")[:60]}')
-        data = [it for it in data if id(it) not in items_to_remove]
-        today_items = [it for it in today_items if id(it) not in items_to_remove]
-        print(f'Removed {len(items_to_remove)} irrelevant/paywall items.')
+        data = [it for it in data if id(it) not in irrelevant_ids]
+        today_items = [it for it in today_items if id(it) not in irrelevant_ids]
+        print(f'Removed {len(irrelevant_items)} irrelevant/paywall items.')
 
     # Ensure required schema fields on all today's items
     for item in today_items:
@@ -633,13 +634,13 @@ def main():
                 existing_index = json.load(f)
         except Exception:
             existing_index = []
-    all_dates: set = set(existing_index)
+    unique_dates: set = set(existing_index)
     for item in data:
         if not item.get('permanent_record'):
             d = item.get('date', '')
             if d and d != 'unknown':
-                all_dates.add(d)
-    merged_dates = sorted(all_dates, reverse=True)
+                unique_dates.add(d)
+    merged_dates = sorted(unique_dates, reverse=True)
     with open(index_path, 'w', encoding='utf-8') as f:
         json.dump(merged_dates, f, ensure_ascii=False, indent=2)
     print(f'  [INDEX] dates_index.json updated: {merged_dates}')
