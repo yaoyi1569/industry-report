@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-04-12T13:29:11Z",
+  "last_updated": "2026-04-12T13:44:25Z",
   "highlights": [
     {
       "rank": 1,
@@ -25,14 +25,14 @@
     },
     {
       "rank": 3,
-      "title": "ベビー用おむつ市場は、プレミアム衛生用品の革新、スマート吸収技術、持続可能な製造の勢いに牽引され、2033年までに957億1860万米ドルへと急成長すると予測されている - newscast.jp",
-      "url": "https://news.google.com/rss/articles/CBMiR0FVX3lxTE52TzZZRWhRRE56U3ROWEpYVEQ4V0U5UGVGTDAyeVBXc3F2SGJpYTVKdDVfR3liRkg3SHV4LTJkWWtpbTJTU3hn?oc=5",
-      "company": "不明",
-      "category": "日用品・衛生用品メーカー / 其他",
-      "date": "2026-04-10",
-      "impact": "大王製紙はスマート吸収技術（特許戦略必須）と持続可能な製造プロセス（再生材料50％以上）の開発を急ぐべき。アジア市場向けにプレミアム生分解性おむつとIoT機能の統合で競合優位を確立し、設備投資を前倒しする必要がある。",
-      "score": 92,
-      "is_patent": false
+      "title": "長巻きトイレ紙の特許侵害、2審も否定 大王製紙が日本製紙側に勝訴 - 毎日新聞",
+      "url": "https://news.google.com/rss/articles/CBMiaEFVX3lxTE9uRXJxbXpQcGxRZjZiN1UyMng1a0JpT25nY29iMTNVRTc0X2R5eGc1WDNzZ0VmLUk0SXhBUjhLUzNpX1luTTdCNW16MzdSLUJWRUpjNjhhcW1aWE9sOUZLeUQyMnA1OGNu?oc=5",
+      "company": "大王製紙",
+      "category": "製紙・パルプメーカー / 特許",
+      "date": "2026-04-11",
+      "impact": "大王製紙の特許勝訴は競合他社への強力な抑止力となり、長巻きトイレットペーパー市場での技術優位性を確定。特許第XXXX号の有効性が司法で確認されたことで、関連技術のライセンス収益化や他製品への応用展開が可能に。競合の日本製紙は技術開発路線の見直しを迫られる。",
+      "score": 88,
+      "is_patent": true
     }
   ],
   "dates": {
@@ -267,6 +267,34 @@
         "impact_analysis": "花王の大人用おむつ「リリーフ」や消臭技術の新製品は、大王製紙の介護用品R&Dに直接的な競合脅威となる。特に吸水速度30%向上と72時間消臭効果は、自社製品の技術革新および特許戦略を見直す契機とすべき。展示会でのデモ体験も市場シェア争いに影響。"
       },
       {
+        "title": "P&G、期間限定おむつ「パンパース はらまきパンツ」を発売 - 日本経済新聞",
+        "summary": "P&Gは2023年9月1日、新商品「パンパース はらまきパンツ」を期間限定で発売する。この製品は赤ちゃんの動きを妨げない設計で、伸縮性のあるウエストバンドを採用。サイズはM〜L、価格は11枚入りで838円（税込）から。年間14万箱の販売を見込み、Amazonや全国のドラッグストアで展開予定。",
+        "company": "P&G",
+        "date": "2026-04-12",
+        "category_id": "①",
+        "category_name": "日用品・衛生用品メーカー",
+        "info_type": "其他",
+        "url": "https://news.google.com/rss/articles/CBMibEFVX3lxTE9fTUxYX2ZNOElHS3dyZ0tzZHR5Um1aRGI3eExYR2prbkpqV3dUdUVVVFgyUmpVMzJHWVJBeU52T3BkQklSVHA4RlctU3RzbHJ5S1ZYT2NLX2daTjN3QmIyczJNdC1mM1VJcFliLQ?oc=5",
+        "source_name": "日本経済新聞",
+        "confidence": "高",
+        "score": 85,
+        "impact_analysis": "P&Gの新製品「パンパース はらまきパンツ」は、機能性に優れたおむつの市場での競争力を強化する。伸縮性のあるウエストバンドなどの技術革新は、大王製紙にも新たな開発インスピレーションを提供し、競合他社との差別化を図る必要性を高める。特に、年間14万箱の販売見込みは市場シェアを脅かす可能性があり、即座に対応が必要。"
+      },
+      {
+        "title": "全然減らないトイレットペーパー！ひとつで6ロール分の超ロング仕様だって！ - GoodsPress Web",
+        "summary": "「簡易包装を採用した6ロール分トイレットペーパーが登場。通常品より20%長く、約3ヶ月分に相当する4,000枚を1ロールに凝縮。環境配慮型でプラスチック使用量を40%削減し、製造工程でのCO2排出量も15%低減。2024年3月より大手量販店で販売開始予定。」",
+        "company": "不明",
+        "date": "2026-04-12",
+        "category_id": "⑥",
+        "category_name": "ティッシュペーパー・家庭紙専業メーカー",
+        "info_type": "其他",
+        "url": "https://news.google.com/rss/articles/CBMiT0FVX3lxTE05MFBoSUczUjZVVnhNeDhaWk5JRmNpdGtkdmZGYU81TTNPSVlVWnl2SW9PdVZiVGVPdXQwR0JCMDVSNUNqY0VKWWxOVTVEcDg?oc=5",
+        "source_name": "GoodsPress Web",
+        "confidence": "中",
+        "score": 85,
+        "impact_analysis": "6ロール分トイレットペーパーの登場は、大王製紙にも競合優位性戦略の再考を迫る。環境配慮型製品開発と製造プロセス革新が急務。CO2低減技術の応用も検討すべき。"
+      },
+      {
         "title": "使用済み紙おむつの水平リサイクルをめざして実証事業を開始します！ - pref.kanagawa.jp",
         "summary": "神奈川県は使用済み紙おむつのリサイクル実証事業を開始。水平リサイクル（同用途への再生）を目指し、具体的には回収した紙おむつを滅菌処理後、パルプと高分子吸収体に分解する技術を検証。2023年度中に県内3自治体でモデル収集を実施し、処理コスト削減と再生材の品質確保が課題とされる。",
         "company": "不明",
@@ -279,20 +307,6 @@
         "confidence": "中",
         "score": 82,
         "impact_analysis": "使用済み紙おむつのリサイクル技術検証は、おむつ分野の持続可能性向上に関連する重要な動向。大王製紙は、このリサイクル技術の開発状況を注視し、自社のリサイクルプロセスや製品設計に反映させる必要がある。競合他社が先行してリサイクル技術を確立すれば、市場優位性を失うリスクも。"
-      },
-      {
-        "title": "パンパース、「おむつ回収プロジェクト」を4月中旬に開始。神戸市内8カ所に回収ボックスを設置 - Circular Economy Hub",
-        "summary": "サマリー:\nP&Gの紙おむつブランド「パンパース」は2023年4月中旬より神戸市と連携し、使用済みおむつのリサイクル実証実験を開始。同市内8ヶ所に専用回収ボックスを設置し、回収後は高温滅菌処理を経てプラスチック原料として再生する循環システムを構築。年間約400トンの使用済みおむつ処理を見込み、自治体との協業モデル確立を目指す。",
-        "company": "不明",
-        "date": "2026-04-12",
-        "category_id": "①",
-        "category_name": "日用品・衛生用品メーカー",
-        "info_type": "其他",
-        "url": "https://news.google.com/rss/articles/CBMiX0FVX3lxTE50WmUydVZqcUxiNm5BVU9xaUxLOUZBSGhsWWxtdG1DeDZFSk1Za0FfdktzU1JZWHR1YVl2ZS1ONkc1UVhpbUpUQTFnNGJGNmZqZ2ZwN2tIR2ZzTGVqOEFB?oc=5",
-        "source_name": "Circular Economy Hub",
-        "confidence": "中",
-        "score": 78,
-        "impact_analysis": "大王製紙の紙おむつ技術開発に直接的な競合インパクト。P&Gの循環型ビジネスモデルは特許戦略上要注意（高温滅菌技術・自治体連携ノウハウ）。400トン規模の実証データは自社のサステナブル素材開発に応用可能。"
       }
     ],
     "2026-04-10": [
@@ -591,20 +605,6 @@
         "confidence": "高",
         "score": 82,
         "impact_analysis": "ユニ・チャームのペット用おむつ技術革新は、大王製紙の家庭用・医療用おむつ開発に直接的な競合脅威。薄型化技術(1.5mm)とウェアラブル設計は特許戦略上要分析。市場規模5倍化目標は業界構造変革の兆候。"
-      },
-      {
-        "title": "「使い捨ておむつ」に潜む化学物質、NY州が成分表示を義務化 - DAILYSUN NEW YORK",
-        "summary": "ニューヨーク州は2024年、使い捨ておむつメーカーに対し、製品に含まれる化学物質の成分表示を義務付ける新規制を導入。対象物質にはフタル酸エステルや揮発性有機化合物（VOC）など18種類が指定され、違反企業には最大1万ドルの罰金が科せられる。業界団体は「3年以内の段階的実施を要請」と反応している。",
-        "company": "不明",
-        "date": "2026-04-10",
-        "category_id": "①",
-        "category_name": "日用品・衛生用品メーカー",
-        "info_type": "其他",
-        "url": "https://news.google.com/rss/articles/CBMiY0FVX3lxTE5UZnRoVkp3SG5EVDZJcy10V0Q2b3Q0R3Z4VGVVY0hkNGZjMjVqM0dSdmtPcGFNZ3hYMk02UjFqRTNtR25uY21RNDZSTWdwMzRiUjk5cjIyUG9SRkZuSXYtSUo3TQ?oc=5",
-        "source_name": "DAILYSUN NEW YORK",
-        "confidence": "中",
-        "score": 82,
-        "impact_analysis": "大王製紙の紙おむつ技術開発に直結する規制変化。フタル酸エステル代替素材の先行開発が急務となり、競合他社より早く対応できれば市場優位性を確立可能。VOC低減技術の特許出願を加速すべき戦略的機会。"
       },
       {
         "title": "瑞光[6279]：新たな事業の開始に関するお知らせ 2024年10月3日(適時開示) ：日経会社情報DIGITAL - 日本経済新聞",
