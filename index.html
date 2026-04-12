@@ -500,6 +500,7 @@
 let DATA = [];      // items for the currently selected date
 let PATENTS = [];   // permanent patent archive (all dates)
 let DATES = {};     // {YYYY-MM-DD: [items] | null}  null = placeholder (not yet loaded)
+let DATE_HIGHLIGHTS = {}; // {YYYY-MM-DD: [highlight objects]} cached per-date highlights
 let SORTED_DATES = []; // dates sorted newest-first
 let SELECTED_DATE_IDX = 0;
 let VAULT = [];     // permanent_vault.json — all Bucket C items across all dates
@@ -697,9 +698,11 @@ function filterCards(gridId, kw, cat, type) {
 // ============================================================
 
 // Fetch a per-date JSON file on demand; calls callback(items) when ready.
+// Also loads and caches the date's highlights, updating the highlight block.
 // Uses cached DATES[dateStr] if already loaded.
 function loadDateData(dateStr, callback) {
   if (DATES[dateStr] && DATES[dateStr] !== null) {
+    renderHighlights(DATE_HIGHLIGHTS[dateStr] || []);
     callback(DATES[dateStr]);
     return;
   }
@@ -712,6 +715,8 @@ function loadDateData(dateStr, callback) {
         return sd !== 0 ? sd : (b.date || '').localeCompare(a.date || '');
       });
       DATES[dateStr] = items;
+      DATE_HIGHLIGHTS[dateStr] = dateData.highlights || [];
+      renderHighlights(DATE_HIGHLIGHTS[dateStr]);
       callback(items);
     })
     .catch(function() {
@@ -1067,6 +1072,11 @@ function init() {
 
       // Set DATA to most recent date's items (guaranteed non-null — loaded from news_data.json)
       DATA = SORTED_DATES.length > 0 ? (DATES[SORTED_DATES[0]] || []) : [];
+
+      // Cache today's highlights so navigating away and back restores them correctly
+      if (SORTED_DATES.length > 0) {
+        DATE_HIGHLIGHTS[SORTED_DATES[0]] = highlights || [];
+      }
 
       buildDateSelect();
       updateDateNav();

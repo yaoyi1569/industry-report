@@ -22,19 +22,9 @@ _OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1/chat/completions'
 _OPENROUTER_MODEL = 'deepseek/deepseek-chat'
 _OPENROUTER_MAX_RETRIES = 5
 
-# 20+20+5 bucket quota — Bucket A: industry (20), Bucket B: machine R&D (20), Bucket C: academic/patents (5)
-BUCKET_QUOTA = 20
-ACADEMIC_QUOTA = 5
-TOP_N = BUCKET_QUOTA * 2 + ACADEMIC_QUOTA  # 45
-
-# Bucket B: Production / Machine R&D
-# An item belongs to Bucket B when its category_id or info_type match any of these signals.
-BUCKET_B_CATEGORY_IDS = {'③', '④'}
-# Only machine-specific info types qualify for Bucket B (research/patent go to Bucket C)
-BUCKET_B_INFO_TYPES = {'加工機技術', '包装機技術'}
-BUCKET_B_COMPANY_KEYWORDS = [
-    'zuiko', '瑞光', 'gdm', 'fameccanica', 'optima', 'fanuc', 'ファナック',
-]
+# Lenient-mode threshold: if today's new-item pool is smaller than this,
+# the AI is instructed to lower its relevance bar for competitor / short-snippet news.
+_LENIENT_THRESHOLD_DEFAULT = 15
 
 
 def strip_html(text):
@@ -455,6 +445,36 @@ def main():
     data_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'news_data.json')
     data_path = os.path.normpath(data_path)
 
+    # Use JST (Asia/Tokyo) for all date calculations so dates match Japan business day
+    jst = pytz.timezone('Asia/Tokyo')
+    today = datetime.now(jst).strftime('%Y-%m-%d')
+    today_dt = datetime.now(jst).date()
+    data_dir = os.path.dirname(data_path)
+    today_file = os.path.join(data_dir, f'{today}.json')
+
+    # ── Snapshot Lock Check ───────────────────────────────────────────────────
+    # Once today's daily file is generated with AI scores and highlights, do not
+    # re-run AI analysis on subsequent invocations (preserves locked snapshot).
+    if os.path.exists(today_file):
+        try:
+            with open(today_file, 'r', encoding='utf-8') as f:
+                locked_data = json.load(f)
+            locked_items = locked_data.get('items', [])
+            locked_highlights = locked_data.get('highlights', [])
+            all_scored = bool(locked_items) and all(
+                (it.get('score') or 0) > 0 and it.get('impact_analysis')
+                for it in locked_items
+            )
+            if all_scored and locked_highlights:
+                print(
+                    f'[SNAPSHOT-LOCKED] {today_file} is already fully scored '
+                    f'({len(locked_items)} items, {len(locked_highlights)} highlights). '
+                    f'Skipping AI analysis.'
+                )
+                return
+        except Exception as e:
+            print(f'  [WARN] Could not read today_file for lock check: {e}')
+
     # Verify OpenRouter API key is available
     if not os.environ.get('OPENROUTER_API_KEY', ''):
         print('WARNING: OPENROUTER_API_KEY not set. Summaries and scores will not be generated.')
@@ -464,8 +484,7 @@ def main():
         print('No data found. Run fetch_news.py first.')
         return
 
-    # Deduplicate by URL before processing; keep the item with the highest score.
-    # Only items with a real URL are deduplicated; URL-less items are kept as-is.
+    # ── Deduplicate by URL; keep the item with the highest score ─────────────
     url_map = {}
     no_url_items = []
     for item in data:
@@ -479,157 +498,83 @@ def main():
         print(f'Deduplication removed {len(data) - len(deduped)} duplicate items.')
     data = deduped
 
-    updated = 0
-    irrelevant_indices = []
-
-    # Count items that still need AI scoring (new items without a score yet).
-    # If today's new pool is small (< 15 unscored items), activate lenient mode so
-    # the AI doesn't aggressively discard competitor / short-snippet articles.
-    LENIENT_THRESHOLD = 15
-    unscored = [
-        it for it in data
+    # ── Score ONLY today's new items ─────────────────────────────────────────
+    # Historical items (past dates) are never re-processed once scored.
+    # This ensures strict per-day isolation and preserves locked snapshots.
+    today_items = [it for it in data if it.get('date') == today]
+    unscored_today = [
+        it for it in today_items
         if not ((it.get('score') or 0) > 0 and it.get('impact_analysis'))
         and strip_html(it.get('summary', '')) != 'AI Summary Pending'
     ]
-    lenient_mode = len(unscored) < LENIENT_THRESHOLD
-    if lenient_mode:
+
+    lenient_mode = len(unscored_today) < _LENIENT_THRESHOLD_DEFAULT
+    if lenient_mode and unscored_today:
         print(
-            f'[LENIENT-MODE] Only {len(unscored)} new items to score — '
+            f'[LENIENT-MODE] Only {len(unscored_today)} new items to score — '
             f'lowering AI relevance threshold to avoid empty categories.'
         )
 
-    idx = 0
-    while idx < len(data):
-        item = data[idx]
+    updated = 0
+    items_to_remove: set = set()
 
-        # Strip HTML from existing summary
+    for item in today_items:
+        # Strip HTML from raw snippet saved by fetch_news.py
         summary = strip_html(item.get('summary', ''))
         if item.get('summary', '') != summary:
             item['summary'] = summary
 
-        # Skip if already has a quality summary, a score, and an impact analysis
         has_quality_summary = len(summary) >= 80 and '<' not in summary
         has_score = (item.get('score') is not None) and (item.get('score', 0) > 0)
         has_impact = bool(item.get('impact_analysis'))
+
+        # Skip already fully-scored items
         if has_quality_summary and has_score and has_impact:
-            idx += 1
             continue
-        # Skip items already marked pending in this run — all tiers failed earlier
+        # Skip items already marked as permanently pending
         if summary == 'AI Summary Pending':
-            idx += 1
             continue
 
         if not os.environ.get('OPENROUTER_API_KEY', ''):
-            # No API key — assign defaults so all items have required fields
+            # No API key — assign zero defaults so schema fields are always present
             if not has_score:
                 item['score'] = 0
             if not has_impact:
                 item['impact_analysis'] = ''
-            idx += 1
             continue
 
         is_relevant = process_item_with_retry(item, lenient_mode=lenient_mode)
-
         if not is_relevant:
-            irrelevant_indices.append(idx)
+            items_to_remove.add(id(item))
         else:
             updated += 1
-        idx += 1
 
-    # Remove items flagged as irrelevant (in reverse order to preserve indices)
-    for idx in sorted(irrelevant_indices, reverse=True):
-        removed_title = data[idx].get('title', '')[:60]
-        print(f'  Removing irrelevant item: {removed_title}')
-        data.pop(idx)
+    # Remove items flagged as irrelevant by AI
+    if items_to_remove:
+        for item in [it for it in today_items if id(it) in items_to_remove]:
+            print(f'  Removing irrelevant item: {item.get("title", "")[:60]}')
+        data = [it for it in data if id(it) not in items_to_remove]
+        today_items = [it for it in today_items if id(it) not in items_to_remove]
+        print(f'Removed {len(items_to_remove)} irrelevant/paywall items.')
 
-    if irrelevant_indices:
-        print(f'Removed {len(irrelevant_indices)} irrelevant/paywall items.')
-
-    # Ensure every item has the required schema fields
-    for item in data:
+    # Ensure required schema fields on all today's items
+    for item in today_items:
         if item.get('score') is None:
             item['score'] = 0
         if not item.get('impact_analysis'):
             item['impact_analysis'] = ''
 
     # Tag patent items with permanent_record so they are archived permanently
-    for item in data:
+    for item in today_items:
         if item.get('info_type') == '特許' and not item.get('permanent_record'):
             item['permanent_record'] = True
             item['category'] = 'patent'
             print(f'  [PATENT-SAVED] {item.get("title", "")[:60]}')
 
-    # Sort by impact score descending
-    data.sort(key=lambda x: x.get('score', 0), reverse=True)
+    # Sort today's items by score descending for the daily snapshot
+    today_items.sort(key=lambda x: x.get('score', 0), reverse=True)
 
-    # ── 20+20+5 Bucket System ─────────────────────────────────────────────────
-    # Bucket C: Academic / Patents (category_id='⑦' or is_academic flag)
-    # Bucket B: Production / Machine R&D (③④ and machine companies) — excludes academic
-    # Bucket A: Competitor / Market Intelligence (everything else)
-
-    def is_bucket_c(item):
-        return item.get('category_id') == '⑦' or bool(item.get('is_academic'))
-
-    def is_bucket_b(item):
-        if is_bucket_c(item):
-            return False
-        if item.get('category_id') in BUCKET_B_CATEGORY_IDS:
-            return True
-        if item.get('info_type') in BUCKET_B_INFO_TYPES:
-            return True
-        company_lower = (item.get('company') or '').lower()
-        title_lower = (item.get('title') or '').lower()
-        return any(kw in company_lower or kw in title_lower for kw in BUCKET_B_COMPANY_KEYWORDS)
-
-    bucket_c = [it for it in data if is_bucket_c(it)]
-    bucket_b = [it for it in data if is_bucket_b(it)]
-    bucket_a = [it for it in data if not is_bucket_b(it) and not is_bucket_c(it)]
-
-    # Take top quota from each bucket
-    selected_c = bucket_c[:ACADEMIC_QUOTA]
-    selected_b = bucket_b[:BUCKET_QUOTA]
-    selected_a = bucket_a[:BUCKET_QUOTA]
-
-    # Fill-in: if a bucket is short, pull from the others
-    shortage_c = ACADEMIC_QUOTA - len(selected_c)
-    shortage_b = BUCKET_QUOTA - len(selected_b)
-    shortage_a = BUCKET_QUOTA - len(selected_a)
-
-    if shortage_b > 0:
-        selected_a = bucket_a[:BUCKET_QUOTA + shortage_b]
-    if shortage_a > 0:
-        selected_b = bucket_b[:BUCKET_QUOTA + shortage_a]
-    if shortage_c > 0:
-        # Pull academic shortfall from highest-scored remaining items
-        used_urls = {it.get('url') for it in selected_a + selected_b + selected_c}
-        fallback = [it for it in data if it.get('url') not in used_urls]
-        selected_c = selected_c + fallback[:shortage_c]
-
-    # Deduplicate across all three buckets (URL-based, keep highest score)
-    seen_urls: set = set()
-    final_data = []
-    for item in selected_c + selected_a + selected_b:
-        url = item.get('url', '')
-        if url and url in seen_urls:
-            continue
-        seen_urls.add(url) if url else None
-        final_data.append(item)
-    data = final_data
-
-    print(
-        f'Bucket A (Competitor/Market): {len(selected_a)} items. '
-        f'Bucket B (Machine/R&D): {len(selected_b)} items. '
-        f'Bucket C (Academic/Patents): {len(selected_c)} items. '
-        f'Total (after dedup): {len(data)}'
-    )
-
-    # Use JST (Asia/Tokyo) to ensure today's date matches the Japan business day
-    jst = pytz.timezone('Asia/Tokyo')
-    today = datetime.now(jst).strftime('%Y-%m-%d')
-    today_dt = datetime.now(jst).date()
-    data_dir = os.path.dirname(data_path)
-
-    # ── Collect Top-3 URLs featured in the last 3 days to prevent repetition ──
+    # ── Collect recent Top-3 URLs to prevent repetition across days ──────────
     recent_top3_urls: set = set()
     for days_back in range(1, 4):
         past_date = (today_dt - timedelta(days=days_back)).strftime('%Y-%m-%d')
@@ -647,47 +592,39 @@ def main():
     if recent_top3_urls:
         print(f'  [TOP3-EXCL] Excluding {len(recent_top3_urls)} URL(s) featured in the last 3 days.')
 
-    # Build Top-3 highlights with strict daily isolation — candidates are
-    # restricted to items published within the last 24–48 hours (today +
-    # yesterday) so that a fresh today item always outranks any older high-
-    # scorer.  Selection still happens after the full 45-item deduplication
-    # above to respect quotas.
-    highlights = generate_highlights(data, excluded_urls=recent_top3_urls, today_str=today) if data else existing_highlights
+    # ── Build Top-3 from TODAY's items ONLY ──────────────────────────────────
+    # Top-3 is strictly derived from today's newly scored items so that the
+    # daily highlight block always reflects fresh news, not historical high-scorers.
+    highlights = (
+        generate_highlights(today_items, excluded_urls=recent_top3_urls, today_str=today)
+        if today_items else existing_highlights
+    )
     if not highlights:
         highlights = existing_highlights
 
+    # ── Save ALL historical data to news_data.json (no bucket trimming) ───────
+    # The full 30-day rolling history is preserved here; cleanup_old_data.py
+    # handles pruning items older than 90 days.  fetch_news.py handles the
+    # 30-day rolling window when appending new items.
     save_data(data_path, data, highlights=highlights)
     print(
-        f'Updated {updated} items. Highlights: {len(highlights)}. '
-        f'Total items saved: {len(data)}'
+        f'Updated {updated} items today. Highlights: {len(highlights)}. '
+        f'Total items in library: {len(data)}'
     )
 
-    # ── Write per-date JSON files & update dates index ────────────────────────
-    # (data_dir already defined above)
+    # ── Write today's per-date JSON file (snapshot) ───────────────────────────
+    # Past day files are immutably locked (never overwritten once created).
+    # Only today's file is written/updated on each run.
+    date_payload = {
+        'date': today,
+        'items': today_items,
+        'highlights': highlights,
+    }
+    with open(today_file, 'w', encoding='utf-8') as f:
+        json.dump(date_payload, f, ensure_ascii=False, indent=2)
+    print(f'  [DATE-FILE] Wrote {today_file} ({len(today_items)} items)')
 
-    # Group non-permanent items by date
-    dates_for_files: dict = {}
-    for item in data:
-        if not item.get('permanent_record'):
-            d = item.get('date', 'unknown')
-            dates_for_files.setdefault(d, []).append(item)
-
-    for date_str, date_items in dates_for_files.items():
-        date_file = os.path.join(data_dir, f'{date_str}.json')
-        # Snapshot locking: never overwrite a past day's file once it has been created.
-        # Only today's file is allowed to be (re)written so today's highlights are current.
-        if date_str != today and os.path.exists(date_file):
-            print(f'  [DATE-FILE] Skipping {date_file} (snapshot locked — historical integrity)')
-            continue
-        date_payload = {
-            'date': date_str,
-            'items': date_items,
-            'highlights': highlights if date_str == today else [],
-        }
-        with open(date_file, 'w', encoding='utf-8') as f:
-            json.dump(date_payload, f, ensure_ascii=False, indent=2)
-        print(f'  [DATE-FILE] Wrote {date_file} ({len(date_items)} items)')
-
+    # ── Update dates_index.json ────────────────────────────────────────────────
     index_path = os.path.join(data_dir, 'dates_index.json')
     existing_index: list = []
     if os.path.exists(index_path):
@@ -696,14 +633,21 @@ def main():
                 existing_index = json.load(f)
         except Exception:
             existing_index = []
-    merged_dates = sorted(
-        set(existing_index + list(dates_for_files.keys())), reverse=True
-    )
+    all_dates: set = set(existing_index)
+    for item in data:
+        if not item.get('permanent_record'):
+            d = item.get('date', '')
+            if d and d != 'unknown':
+                all_dates.add(d)
+    merged_dates = sorted(all_dates, reverse=True)
     with open(index_path, 'w', encoding='utf-8') as f:
         json.dump(merged_dates, f, ensure_ascii=False, indent=2)
     print(f'  [INDEX] dates_index.json updated: {merged_dates}')
 
-    # ── Update permanent_vault.json with all Bucket C items ───────────────────
+    # ── Update permanent_vault.json with today's Bucket C items ──────────────
+    def is_bucket_c(item):
+        return item.get('category_id') == '⑦' or bool(item.get('is_academic'))
+
     vault_path = os.path.join(data_dir, 'permanent_vault.json')
     existing_vault: list = []
     if os.path.exists(vault_path):
@@ -714,8 +658,8 @@ def main():
             existing_vault = []
     vault_urls = {item.get('url') for item in existing_vault if item.get('url')}
     new_vault_items = [
-        item for item in bucket_c
-        if item.get('url') and item.get('url') not in vault_urls
+        item for item in today_items
+        if is_bucket_c(item) and item.get('url') and item.get('url') not in vault_urls
     ]
     if new_vault_items:
         updated_vault = existing_vault + new_vault_items
