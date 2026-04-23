@@ -135,5 +135,35 @@
     "impact_analysis": "紙パルプ産業全体の特許動向は間接的な参考にはなるが、家庭紙・衛生用品分野の具体的技術動向や競合情報が欠如しており、大王製紙のR&D戦略に直接活用できる情報ではない。競合特許の深堀りが必要。",
     "permanent_record": true,
     "category": "patent"
+  },
+  {
+    "title": "JP5217540B2 - クラフトパルプの製造方法 - Google Patents",
+    "summary": "JP5217540B2 - クラフトパルプの製造方法に関して、本特許はクラフトパルプの効率的な製造プロセスを提供するものである。具体的には、原材料の処理、蒸解、洗浄、漂白の各工程を最適化し、エネルギー消費の削減と製品品質の向上を実現している。この技術は家庭紙や衛生用品の原料となるパルプ製造に直接関連し、業界全体の生産効率改善に貢献する可能性がある。",
+    "company": "不明",
+    "date": "2026-04-23",
+    "category_id": "⑦",
+    "category_name": "学術論文・特許情報",
+    "info_type": "其他",
+    "url": "https://news.google.com/rss/articles/CBMiXEFVX3lxTFB1eFRPTHdFb1ppUF9SRzQ3Nlg3c2Y5OFo5RG11SUZLRXVOa1dCWDdLdGs0c2xSamlhQng5SUFoZHVPVGgxekoxenFDN3lQcWFTdDFhTzRXeFYtaW0y?oc=5",
+    "source_name": "Google Patents",
+    "confidence": "中",
+    "is_academic": true,
+    "score": 85,
+    "impact_analysis": "クラフトパルプ製造プロセスの効率化技術は、大王製紙のコスト競争力強化と品質向上に直結。競合他社が同様の特許を取得した場合、当社の製紙工程・原料調達戦略の見直しが急務となる。特に家庭紙・ティッシュ分野での原料優位性確保が可能。"
+  },
+  {
+    "title": "JP2011202307A - 脱インキパルプの製造方法 - Google Patents",
+    "summary": "JP2011202307A - 脱インキパルプの製造方法&nbsp;&nbsp;Google Patents\n\nサマリー: 本特許は、脱インキパルプの製造方法に関する技術を提案している。具体的には、廃紙からインキを効率的に除去するプロセスを改善し、再生パルプの品質向上と製造コストの削減を図る。提案された方法では、特定の化学薬品と機械的処理を組み合わせることで、従来よりも短時間で高純度の脱インキパルプを生成可能。これにより、家庭紙・衛生用品業界における持続可能な原材料調達への貢献が期待される。",
+    "company": "不明",
+    "date": "2026-04-23",
+    "category_id": "⑦",
+    "category_name": "学術論文・特許情報",
+    "info_type": "其他",
+    "url": "https://news.google.com/rss/articles/CBMiX0FVX3lxTE5wYjVmam9aQXdYckZBRzdXQ2V5c1h0SXVtLWo5M21VOGFTYmZBVkZCd2N2dWdqS2pqZnY5R0s2eGFhVGg0bk05bkU4eGRkWGotMUp4b1pyY1BQbm16dmV3?oc=5",
+    "source_name": "Google Patents",
+    "confidence": "中",
+    "is_academic": true,
+    "score": 72,
+    "impact_analysis": "本特許は脱インキパルプ製造プロセスの革新を示し、大王製紙の再生パルプ品質向上とコスト削減に直接寄与。競合他社の持続可能な原材料調達戦略への脅威と機会を提示。特に家庭紙・衛生用品分野での競争優位性強化に貢献。"
   }
 ]
