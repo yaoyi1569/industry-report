@@ -43,55 +43,56 @@ _SEARCH_DATE_WINDOWS = [10, 20, 30, 60]
 _SCRIPT_DIR = os.path.dirname(__file__)
 SEARCH_CONFIG_PATH = os.path.normpath(os.path.join(_SCRIPT_DIR, '..', 'data', 'search_config.json'))
 
-# Search queries for the industry — full coverage across all five product segments
+# ============================================================
+# 简化后的搜索查询（使用 | 代替 OR，移除多余括号/引号）
+# 每个查询控制在较短长度内，避免 400 错误
+# ============================================================
 SEARCH_QUERIES = [
     # Competitor / Market Intelligence — Segment A
-    'ユニ・チャーム ティシュー OR おむつ OR 衛生用品 OR ナプキン OR 決算 OR 投資',
-    '花王 ティシュー OR 家庭紙 OR 衛生用品 OR おむつ OR 研究開発 OR 投資',
-    'P&G Japan おむつ OR ナプキン OR ティシュー OR 衛生用品',
-    'ライオン トイレット OR 衛生用品 OR 新製品 OR 投資',
-    '大王製紙 OR 王子ホールディングス OR 日本製紙 家庭紙 OR トイレット OR 業界',
-    'Essity Kimberly-Clark ティシュー OR 衛生用品 OR おむつ',
-    '丸富製紙 OR カミ商事 家庭紙 OR ティシュー',
-    '家庭紙 トイレットペーパー 業界 規制 OR 値上げ',
+    'ユニ・チャーム ティシュー|おむつ|衛生用品|ナプキン|決算|投資',
+    '花王 ティシュー|家庭紙|衛生用品|おむつ|研究開発|投資',
+    'P&G Japan おむつ|ナプキン|ティシュー|衛生用品',
+    'ライオン トイレット|衛生用品|新製品|投資',
+    '大王製紙|王子ホールディングス|日本製紙 家庭紙|トイレット|業界',
+    'Essity Kimberly-Clark ティシュー|衛生用品|おむつ',
+    '丸富製紙|カミ商事 家庭紙|ティシュー',
+    '家庭紙 トイレットペーパー 業界 規制|値上げ',
     # Diaper segment
-    'おむつ 新製品 OR 技術 OR 素材 OR 吸収 OR ユニ・チャーム OR 花王',
-    'オムツ 不織布 OR 吸収体 OR 研究開発 OR 製造',
+    'おむつ 新製品|技術|素材|吸収|ユニ・チャーム|花王',
+    'オムツ 不織布|吸収体|研究開発|製造',
     # Sanitary napkin segment
-    'ナプキン 生理用品 新製品 OR 素材 OR 技術 OR 市場',
-    '生理用品 衛生用品 業界 OR 環境 OR サステナ',
+    'ナプキン 生理用品 新製品|素材|技術|市場',
+    '生理用品 衛生用品 業界|環境|サステナ',
     # Wet tissue segment
-    'ウェットティッシュ Winner Medical 稳健医療 OR 新製品 OR 技術',
-    'ウェットティシュ 市場 OR 素材 OR 不織布 OR 製造',
+    'ウェットティッシュ Winner Medical 稳健医療 新製品|技術',
+    'ウェットティシュ 市場|素材|不織布|製造',
     # Chinese manufacturers
-    'Vinda 维达 ティシュー OR 家庭紙 OR 衛生用品',
-    'Hengan 恒安 ティシュー OR おむつ OR ナプキン OR 衛生用品',
-    '中顺洁柔 C&S Paper 家庭紙 OR 製紙',
+    'Vinda 维达 ティシュー|家庭紙|衛生用品',
+    'Hengan 恒安 ティシュー|おむつ|ナプキン|衛生用品',
+    '中顺洁柔 C&S Paper 家庭紙|製紙',
     # Machine / Production R&D — Segment B
-    '瑞光 Zuiko 加工機 OR 設備 不織布',
+    '瑞光 Zuiko 加工機|設備|不織布',
     'GDM Fameccanica 吸収体 加工機',
     'OPTIMA packaging 包装機 衛生',
-    'ファナック FANUC パレタイザー 衛生 OR 包装',
+    'ファナック FANUC パレタイザー 衛生|包装',
 ]
 
-# Academic & Patent queries — Bucket C (J-STAGE / Google Scholar / patents only)
+# 学术/专利查询（进一步拆分，每个查询更短）
 ACADEMIC_QUERIES = [
-    # Group 1: Direct Paper Competitors (Tissue & Towels)
-    # Focus: Oji Holdings/Nepia, Nippon Paper/Crecia, Kamishoji — excluding Daio Paper
-    'site:jstage.jst.go.jp ("王子ホールディングス" OR "王子ネピア" OR "日本製紙" OR "日本製紙クレシア" OR "カミ商事") ("ティッシュ" OR "タオル" OR "パルプ") (特許 OR 発明 OR 新技術) -"大王製紙"',
-    'site:patents.google.com ("王子ホールディングス" OR "王子ネピア" OR "日本製紙" OR "日本製紙クレシア") ("ティッシュ" OR "タオル" OR "パルプ") -"大王製紙"',
-
-    # Group 2: Hygiene & Sanitary Competitors (Diapers & Napkins)
-    # Focus: Unicharm, Kao, P&G technical papers on non-woven fabrics and absorbents
-    'site:jstage.jst.go.jp ("ユニ・チャーム" OR "花王" OR "P&G") ("不織布" OR "おむつ" OR "生理用品" OR "吸収体") (特許 OR 発明 OR 新技術) -"大王製紙"',
-    'site:patents.google.com ("ユニ・チャーム" OR "花王" OR "P&G") ("不織布" OR "おむつ" OR "生理用品" OR "吸収体") -"大王製紙"',
-
-    # Group 3: Process & Equipment Innovation (Smaller innovative rivals)
-    # Focus: Tokushu Tokai Paper and Marufuji Paper manufacturing process papers
-    'site:jstage.jst.go.jp ("特種東海製紙" OR "丸富製紙") ("加工技術" OR "包装" OR "省エネルギー") (特許 OR 発明 OR 新技術) -"大王製紙"',
+    # Group 1: Oji/Nippon Paper (split into two)
+    'site:jstage.jst.go.jp 王子ホールディングス|王子ネピア ティッシュ|タオル|パルプ 特許|発明|新技術 -大王製紙',
+    'site:patents.google.com 王子ホールディングス|王子ネピア ティッシュ|タオル|パルプ 特許|発明|新技術 -大王製紙',
+    'site:jstage.jst.go.jp 日本製紙|日本製紙クレシア|カミ商事 ティッシュ|タオル|パルプ 特許|発明|新技術 -大王製紙',
+    'site:patents.google.com 日本製紙|日本製紙クレシア|カミ商事 ティッシュ|タオル|パルプ 特許|発明|新技術 -大王製紙',
+    # Group 2: Unicharm/Kao/P&G
+    'site:jstage.jst.go.jp ユニ・チャーム|花王|P&G 不織布|おむつ|生理用品|吸収体 特許|発明|新技術',
+    'site:patents.google.com ユニ・チャーム|花王|P&G 不織布|おむつ|生理用品|吸収体 特許|発明|新技術',
+    # Group 3: Tokushu/Marufuji
+    'site:jstage.jst.go.jp 特種東海製紙|丸富製紙 加工技術|包装|省エネルギー 特許|発明|新技術',
+    'site:patents.google.com 特種東海製紙|丸富製紙 加工技術|包装|省エネルギー 特許|発明|新技術',
 ]
 
-# Core tissue/hygiene terms — at least one must appear in title+snippet
+# Core terms for relevance filtering
 TISSUE_CORE_TERMS = [
     '家庭紙', 'ティシュー', 'ティッシュ', 'トイレット', 'ちり紙', 'キッチンペーパー',
     'おむつ', 'オムツ', 'ナプキン', '生理用', '失禁', '衛生用品', '衛生用紙',
@@ -99,18 +100,15 @@ TISSUE_CORE_TERMS = [
     '抽紙', '衛生紙',
 ]
 
-# Industry-specific companies (presence alone qualifies the article)
 TISSUE_INDUSTRY_COMPANIES = [
     'ユニ・チャーム', 'unicharm',
     '大王製紙', '王子製紙', '王子ホールディングス', '日本製紙', '丸富製紙',
     '瑞光', 'zuiko', 'gdm', 'fameccanica',
     'winner medical', '稳健', 'essity', 'kimberly-clark', 'kimberly clark',
     'キンバリー', 'カミ商事',
-    # Chinese manufacturers
     'vinda', '维达', 'hengan', '恒安', '中顺洁柔', 'c&s paper',
 ]
 
-# Off-topic product terms — if any appear WITHOUT core tissue terms, reject the article
 OFFTOPIC_TERMS = [
     '洗剤', '柔軟剤', '洗濯洗剤', 'アリエール', 'レノア', 'ボールド', 'ジョイ',
     'ファブリーズ', '漂白剤', '洗濯槽',
@@ -121,29 +119,20 @@ OFFTOPIC_TERMS = [
 
 
 def _today_jst():
-    """Return today's date string (YYYY-MM-DD) in Japan Standard Time (JST, UTC+9)."""
     if _PYTZ_AVAILABLE:
         return datetime.now(pytz.timezone('Asia/Tokyo')).strftime('%Y-%m-%d')
-    # Fallback: manually apply +9h offset
     return (datetime.now(timezone.utc) + timedelta(hours=9)).strftime('%Y-%m-%d')
 
 
 def is_industry_relevant(title, snippet):
-    """Return True only if the article is relevant to the tissue/hygiene/paper industry.
-
-    All five product segments (Tissue, Toilet Paper, Diapers, Sanitary Napkins, Wet Tissues)
-    are treated with equal priority.  Only purely off-topic FMCG articles are rejected.
-    """
     text = (title + ' ' + snippet).lower()
     has_core = any(term.lower() in text for term in TISSUE_CORE_TERMS)
     has_company = any(name.lower() in text for name in TISSUE_INDUSTRY_COMPANIES)
     has_offtopic = any(term.lower() in text for term in OFFTOPIC_TERMS)
-
-    # Explicitly off-topic articles without any tissue/hygiene signal are rejected
     if has_offtopic and not has_core:
         return False
-
     return has_core or has_company
+
 
 CATEGORY_KEYWORDS = {
     '①': ['ユニ・チャーム', '花王', 'P&G', 'ライオン', 'キンバリー', 'Kimberly', 'Essity',
@@ -211,10 +200,7 @@ def determine_info_type(text):
 
 
 def fetch_from_google_cse(query, api_key, cse_id, num=10, date_restrict_days=None):
-    """Return list of items on success, None on a fatal API error (403/429).
-
-    Returns None to signal the caller to switch to the next fallback engine.
-    """
+    """Return list of items on success, None on a fatal API error (400/403/429)."""
     url = 'https://www.googleapis.com/customsearch/v1'
     restrict = date_restrict_days if date_restrict_days else DATE_RESTRICT_DAYS
     params = {
@@ -241,9 +227,9 @@ def fetch_from_google_cse(query, api_key, cse_id, num=10, date_restrict_days=Non
             code = err.get('code')
             reason = err.get('errors', [{}])[0].get('reason')
             print(f"  [Google-CSE] API error {code}: {err.get('message')} (reason: {reason})")
-            # 403 = API not enabled / quota exhausted; 429 = rate-limited — both fatal
-            if code in (403, 429):
-                print(f'  [Google-CSE] Fatal error {code} — switching to DuckDuckGo fallback.')
+            # Treat 400, 403, 429 as fatal (switch to fallback)
+            if code in (400, 403, 429):
+                print(f'  [Google-CSE] Fatal error {code} — switching to fallback.')
                 fatal = True
         except Exception:
             pass
@@ -254,16 +240,10 @@ def fetch_from_google_cse(query, api_key, cse_id, num=10, date_restrict_days=Non
 
 
 def strip_html(text):
-    """Remove HTML tags from a string."""
     return re.sub(r'<[^>]+>', '', text or '').strip()
 
 
 def fetch_from_duckduckgo(query, max_items=15):
-    """Fetch news items from DuckDuckGo News Search (no API key required).
-
-    Used as Fallback 1 when Google CSE returns a 403 or 429 error.
-    Returns a list of items normalised to the same schema as Google CSE results.
-    """
     if not _ddgs_available:
         print('  [DuckDuckGo] duckduckgo_search library not available; skipping.')
         return []
@@ -285,11 +265,6 @@ def fetch_from_duckduckgo(query, max_items=15):
 
 
 def fetch_from_google_news_rss(query, max_items=100):
-    """Fetch news items from Google News RSS (no API key required).
-
-    Used as Fallback 2 when both Google CSE and DuckDuckGo fail.
-    Fetches up to *max_items* raw entries (default 100) to maximise the pool.
-    """
     if not _feedparser_available:
         print('  [RSS] feedparser not available; skipping RSS fallback.')
         return []
@@ -319,17 +294,10 @@ def fetch_from_google_news_rss(query, max_items=100):
 
 
 def _fetch_with_fallback(query, api_key, cse_id, use_google_cse, use_ddgs, restrict_days):
-    """Try Google CSE → DuckDuckGo → Google News RSS in order.
-
-    Returns a 3-tuple: (items, use_google_cse, use_ddgs).
-    The two boolean flags are updated and returned so the caller can propagate
-    a "this engine is broken for the whole run" signal.
-    """
     if use_google_cse:
         cse_items = fetch_from_google_cse(query, api_key, cse_id, date_restrict_days=restrict_days)
         if cse_items is not None:
             return cse_items, True, use_ddgs
-        # Fatal CSE error — fall through to DuckDuckGo
         print('  [FALLBACK] Google CSE failed; switching to DuckDuckGo for remaining queries.')
         use_google_cse = False
 
@@ -337,23 +305,14 @@ def _fetch_with_fallback(query, api_key, cse_id, use_google_cse, use_ddgs, restr
         ddg_items = fetch_from_duckduckgo(query)
         if ddg_items:
             return ddg_items, False, True
-        # DDG returned nothing (could be a transient failure) — fall through to RSS
         print('  [FALLBACK] DuckDuckGo returned no results; trying Google News RSS.')
 
-    # Tertiary fallback: Google News RSS with increased depth
     return fetch_from_google_news_rss(query, max_items=100), False, use_ddgs
 
 
 def fetch_news(existing_urls=None, use_rss_fallback=False, date_restrict_days=None):
-    """Fetch industry news (Bucket A + B).
-
-    Tries engines in order: Google CSE → DuckDuckGo → Google News RSS (100 items).
-    Returns (items, use_rss_fallback) where use_rss_fallback indicates Google CSE is down.
-    *date_restrict_days* overrides DATE_RESTRICT_DAYS when broadening the search window.
-    """
     api_key = os.environ.get('GOOGLE_API_KEY', '')
     cse_id = os.environ.get('GOOGLE_CSE_ID', '')
-
     today = _today_jst()
     results = []
     _existing = existing_urls or set()
@@ -402,20 +361,13 @@ def fetch_news(existing_urls=None, use_rss_fallback=False, date_restrict_days=No
                 'confidence': '高' if company != '不明' else '中',
             })
 
-    # Signal to callers whether Google CSE is still usable
     rss_fallback_flag = not use_google_cse
     return results, rss_fallback_flag
 
 
 def fetch_academic_news(existing_urls=None, date_restrict_days=None, use_rss_fallback=False):
-    """Fetch academic / patent items (Bucket C) from J-STAGE, Google Scholar, patents.google.
-
-    Uses an extended date range when a deficit is detected from the previous run.
-    Returns a list of new items tagged with category_id='⑦'.
-    """
     api_key = os.environ.get('GOOGLE_API_KEY', '')
     cse_id = os.environ.get('GOOGLE_CSE_ID', '')
-
     today = _today_jst()
     results = []
     _existing = existing_urls or set()
@@ -465,12 +417,6 @@ def fetch_academic_news(existing_urls=None, date_restrict_days=None, use_rss_fal
 
 
 def load_search_config():
-    """Load deficit-tracking configuration from search_config.json.
-
-    Returns a dict with at minimum:
-      - academic_deficit: int  (cumulative shortfall vs QUOTA_ACADEMIC)
-      - last_run_date: str     (YYYY-MM-DD of last run that computed a deficit)
-    """
     defaults = {'academic_deficit': 0, 'last_run_date': ''}
     if os.path.exists(SEARCH_CONFIG_PATH):
         try:
@@ -483,43 +429,32 @@ def load_search_config():
 
 
 def save_search_config(cfg):
-    """Persist deficit-tracking configuration to search_config.json."""
     os.makedirs(os.path.dirname(SEARCH_CONFIG_PATH), exist_ok=True)
     with open(SEARCH_CONFIG_PATH, 'w', encoding='utf-8') as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
 
 
 def academic_date_restrict(deficit):
-    """Return an extended date-restrict window (days) based on the accumulated deficit.
-
-    Each missing item adds 3 extra search days (capped at 60 extra days).
-    """
     return DATE_RESTRICT_DAYS + min(deficit * 3, 60)
 
 
-
 def load_existing(path):
-    """Return (regular_items, last_updated, highlights, patents)."""
     if os.path.exists(path):
         with open(path, 'r', encoding='utf-8') as f:
             raw = json.load(f)
-        # Legacy bare-array format
         if isinstance(raw, list):
             return raw, None, [], []
-        # New date-bucket format: {last_updated, highlights, dates, patents}
         if 'dates' in raw:
             items = []
             for date_items in raw.get('dates', {}).values():
                 items.extend(date_items)
             patents = raw.get('patents', [])
             return items, raw.get('last_updated'), raw.get('highlights', []), patents
-        # Legacy {last_updated, highlights, items} format
         return raw.get('items', []), raw.get('last_updated'), raw.get('highlights', []), []
     return [], None, [], []
 
 
 def save_data(path, items, highlights=None, patents=None):
-    """Save items in date-bucket format; patents are stored in a permanent archive."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     dates = {}
@@ -546,18 +481,15 @@ if __name__ == '__main__':
 
     print(f'Existing items: {len(existing)} regular, {len(patents)} patents')
 
-    # ── Load deficit config ──────────────────────────────────────────────────
     cfg = load_search_config()
     deficit = cfg.get('academic_deficit', 0)
     restrict_days = academic_date_restrict(deficit)
     print(f'Academic deficit from previous runs: {deficit}. '
           f'Using {restrict_days}-day window for academic queries.')
 
-    # ── Fetch Bucket A + B (industry / machine news) ──────────────────────────
     print('Fetching industry news (Bucket A + B)...')
     industry_items, rss_fallback = fetch_news(existing_urls=existing_urls)
 
-    # ── Fetch Bucket C (academic / patents) ───────────────────────────────────
     print('Fetching academic / patent news (Bucket C)...')
     academic_items = fetch_academic_news(
         existing_urls=existing_urls,
@@ -565,7 +497,6 @@ if __name__ == '__main__':
         use_rss_fallback=rss_fallback,
     )
 
-    # ── Deduplicate within newly fetched items ────────────────────────────────
     seen_new_urls = set()
     deduped_industry = []
     for item in industry_items:
@@ -583,7 +514,6 @@ if __name__ == '__main__':
         seen_new_urls.add(u) if u else None
         deduped_academic.append(item)
 
-    # ── Classify industry items into Bucket A (industry) and Bucket B (machine) ─
     MACHINE_CATEGORY_IDS = {'③', '④'}
     MACHINE_KEYWORDS = ['zuiko', '瑞光', 'gdm', 'fameccanica', 'optima', 'fanuc', 'ファナック']
 
@@ -597,8 +527,6 @@ if __name__ == '__main__':
     bucket_b_new = [it for it in deduped_industry if is_machine_item(it)]
     bucket_c_new = deduped_academic
 
-    # ── Compute per-bucket shortfalls relative to today's existing data ───────
-    # Use JST to ensure the date matches Japan business day
     today_str = _today_jst()
     today_existing = [it for it in existing if it.get('date') == today_str]
     today_academic = [it for it in patents if it.get('date') == today_str]
@@ -630,7 +558,6 @@ if __name__ == '__main__':
     appended_b = append_capped(bucket_b_new, cap_b, 'BUCKET-B')
     appended_c = append_capped(bucket_c_new, cap_c, 'BUCKET-C')
 
-    # ── Cross-fill: if a bucket is still under quota, pull from the other bucket ─
     if appended_a < cap_a:
         leftover = [it for it in bucket_b_new if it.get('url') not in existing_urls]
         extra = append_capped(leftover, cap_a - appended_a, 'FILL-A-from-B')
@@ -640,8 +567,7 @@ if __name__ == '__main__':
         extra = append_capped(leftover, cap_b - appended_b, 'FILL-B-from-A')
         appended_b += extra
 
-    # ── Aggressive retry: if still under quota, widen date window and re-fetch ──
-    for window in _SEARCH_DATE_WINDOWS[1:]:  # skip first (already used)
+    for window in _SEARCH_DATE_WINDOWS[1:]:
         total_a = existing_a + appended_a
         total_b = existing_b + appended_b
         total_c = existing_c + appended_c
@@ -679,11 +605,8 @@ if __name__ == '__main__':
     if not appended_total:
         print(f'No recent news found after exhausting all search windows.')
 
-    # ── Update academic deficit for next run ──────────────────────────────────
     actual_academic_today = existing_c + appended_c
     daily_shortfall = max(0, QUOTA_ACADEMIC - actual_academic_today)
-    # Deficit formula: add today's shortfall, but subtract any overshoot (items
-    # fetched beyond the daily cap reduce the backlog).  Never go below zero.
     new_deficit = max(0, deficit + daily_shortfall - max(0, appended_c - cap_c))
     cfg['academic_deficit'] = new_deficit
     cfg['last_run_date'] = today_str
@@ -691,7 +614,6 @@ if __name__ == '__main__':
     print(f'Academic quota: target={QUOTA_ACADEMIC}, fetched today={actual_academic_today}, '
           f'deficit={new_deficit} (was {deficit}).')
 
-    # ── Prune regular items older than 30 days; patents are never pruned ──────
     cutoff = datetime.now(timezone.utc) - timedelta(days=30)
     cutoff_str = cutoff.strftime('%Y-%m-%d')
     kept = []
@@ -707,7 +629,6 @@ if __name__ == '__main__':
         print(f'Pruned {pruned} items older than 30 days.')
     existing = kept
 
-    # Sort newest first
     existing.sort(key=lambda x: x.get('date', ''), reverse=True)
 
     save_data(data_path, existing, highlights=highlights, patents=patents)
