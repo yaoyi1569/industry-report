@@ -30,24 +30,19 @@ except ImportError:
     pass
 
 # ============================================================
-# 配置常量
+# 配置常量（移除每日配额限制，改为无限制追加）
 # ============================================================
-DATE_RESTRICT_DAYS = 10           # Google CSE 基础日期窗口
-QUOTA_INDUSTRY = 20               # Bucket A 每日上限
-QUOTA_MACHINE = 20                # Bucket B 每日上限
-QUOTA_ACADEMIC = 5                # Bucket C 每日上限
-MIN_TOTAL_NEWS = 30               # 每日最少抓取总数（所有Bucket合计）
+DATE_RESTRICT_DAYS = 10
+MIN_TOTAL_NEWS = 30   # 仅用于日志提醒，不再硬性限制
 
-# 搜索窗口逐步扩大 (天) 和对应的硬过滤天数 (用于 DuckDuckGo/RSS)
-# 索引对应：尝试1: 10天窗口 + 3天硬过滤；尝试2: 20天窗口 + 7天硬过滤；以此类推
-SEARCH_WINDOWS_DAYS = [10, 20, 30, 60]
-HARD_AGE_DAYS = [3, 7, 14, 30]    # 最大30天
+_SEARCH_DATE_WINDOWS = [10, 20, 30, 60]   # 扩大窗口
+_HARD_AGE_DAYS = [3, 7, 14, 30]           # 对应的硬过滤天数
 
 _SCRIPT_DIR = os.path.dirname(__file__)
 SEARCH_CONFIG_PATH = os.path.normpath(os.path.join(_SCRIPT_DIR, '..', 'data', 'search_config.json'))
 
 # ============================================================
-# 搜索查询（已简化，使用 | 代替 OR）
+# 搜索查询（已简化）
 # ============================================================
 SEARCH_QUERIES = [
     'ユニ・チャーム ティシュー|おむつ|衛生用品|ナプキン|決算|投資',
@@ -85,7 +80,7 @@ ACADEMIC_QUERIES = [
 ]
 
 # ============================================================
-# 相关性过滤关键词（保持不变）
+# 相关性过滤关键词（不变）
 # ============================================================
 TISSUE_CORE_TERMS = [
     '家庭紙', 'ティシュー', 'ティッシュ', 'トイレット', 'ちり紙', 'キッチンペーパー',
@@ -107,7 +102,6 @@ OFFTOPIC_TERMS = [
     '食品', '飲料', 'コーヒー', 'ビール', '菓子', 'サプリ',
 ]
 
-# 分类映射
 CATEGORY_KEYWORDS = {
     '①': ['ユニ・チャーム', '花王', 'P&G', 'ライオン', 'キンバリー', 'Kimberly', 'Essity',
            '衛生用品', 'おむつ', 'オムツ', 'ナプキン', '生理用', 'Vinda', '维达', 'Hengan', '恒安', '中顺洁柔'],
@@ -118,6 +112,7 @@ CATEGORY_KEYWORDS = {
     '⑥': ['ティシュー', 'ティッシュ', 'トイレット', '家庭紙', '衛生用紙'],
     '⑦': ['jstage', 'patents.google', 'scholar.google', '特許', '論文', '学会', 'jst.go.jp'],
 }
+
 CATEGORY_NAMES = {
     '①': '日用品・衛生用品メーカー',
     '②': '製紙・パルプメーカー',
@@ -188,10 +183,9 @@ def strip_html(text):
     return re.sub(r'<[^>]+>', '', text or '').strip()
 
 # ============================================================
-# 搜索引擎（带硬日期过滤）
+# 搜索引擎（带硬日期过滤，支持 CSE）
 # ============================================================
 def fetch_from_google_cse(query, api_key, cse_id, num=10, date_restrict_days=None):
-    """返回列表，若致命错误返回 None（触发 fallback）"""
     url = 'https://www.googleapis.com/customsearch/v1'
     restrict = date_restrict_days if date_restrict_days else DATE_RESTRICT_DAYS
     params = {
@@ -451,7 +445,20 @@ def save_data(path, items, highlights=None, patents=None):
         json.dump(payload, f, ensure_ascii=False, indent=2)
 
 # ============================================================
-# 主入口：动态调整窗口与硬过滤，确保总数 ≥ MIN_TOTAL_NEWS
+# 辅助：根据窗口计算硬过滤天数
+# ============================================================
+def get_hard_age_from_window(window_days):
+    if window_days <= 10:
+        return 3
+    elif window_days <= 20:
+        return 7
+    elif window_days <= 30:
+        return 14
+    else:
+        return 30
+
+# ============================================================
+# 主入口：动态调整窗口，抓取所有新文章并直接追加（无配额限制）
 # ============================================================
 if __name__ == '__main__':
     data_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'news_data.json')
@@ -468,28 +475,27 @@ if __name__ == '__main__':
     base_restrict_days = academic_date_restrict(deficit)
     print(f'Academic deficit: {deficit}, base window: {base_restrict_days}d.')
 
-    # 收集所有新抓取条目（跨尝试）
+    # 收集所有新抓取条目（跨重试）
     all_new_items = []
     rss_fallback = False
 
-    for idx, (window, hard_age) in enumerate(zip(SEARCH_WINDOWS_DAYS, HARD_AGE_DAYS)):
-        # 实际使用的窗口 = max(基础窗口, 当前窗口) —— deficit 可能已扩大
+    for idx, (window, hard_age) in enumerate(zip(_SEARCH_DATE_WINDOWS, _HARD_AGE_DAYS)):
         actual_window = max(window, base_restrict_days)
-        # 硬过滤天数使用当前窗口对应的值（但若 actual_window 很大，硬过滤最大30天）
-        # 注意：hard_age 最大为30，已经满足需求
-        print(f'\n=== Attempt {idx+1}: date window = {actual_window}d, hard age filter = {hard_age}d ===')
+        # 硬过滤天数基于实际窗口计算
+        actual_hard_age = get_hard_age_from_window(actual_window)
+        print(f'\n=== Attempt {idx+1}: date window = {actual_window}d, hard age filter = {actual_hard_age}d ===')
         # 抓取行业新闻
         industry_items, rss_fallback = fetch_news(
             existing_urls=existing_urls,
             use_rss_fallback=rss_fallback,
             date_restrict_days=actual_window,
-            max_age_days=hard_age,
+            max_age_days=actual_hard_age,
         )
         academic_items = fetch_academic_news(
             existing_urls=existing_urls,
             date_restrict_days=actual_window,
             use_rss_fallback=rss_fallback,
-            max_age_days=hard_age,
+            max_age_days=actual_hard_age,
         )
 
         # 合并去重（本次内部去重）
@@ -513,7 +519,7 @@ if __name__ == '__main__':
             if item.get('url'):
                 existing_urls.add(item['url'])
 
-        # 统计当前累计总数（粗略分类，仅用于计数）
+        # 统计当前累计总数
         MACHINE_CATS = {'③', '④'}
         def is_machine(it):
             if it.get('category_id') in MACHINE_CATS:
@@ -532,67 +538,28 @@ if __name__ == '__main__':
     else:
         print(f'WARNING: Only {total_new} new items fetched, below target {MIN_TOTAL_NEWS}.')
 
-    # ===== 以下为原有的配额处理、跨桶填充、修剪、保存逻辑 =====
-    # 需要基于 all_new_items 和 existing 数据应用每日配额
-    today_str = _today_jst()
-    today_existing = [it for it in existing if it.get('date') == today_str]
-    today_patents = [it for it in patents if it.get('date') == today_str]
-
-    def is_machine_item(it):
-        if it.get('category_id') in {'③', '④'}:
-            return True
-        text = (it.get('company', '') + ' ' + it.get('title', '')).lower()
-        return any(kw in text for kw in ['zuiko', '瑞光', 'gdm', 'fameccanica', 'optima', 'fanuc', 'ファナック'])
-
-    existing_a = len([it for it in today_existing if not is_machine_item(it) and it.get('category_id') != '⑦'])
-    existing_b = len([it for it in today_existing if is_machine_item(it)])
-    existing_c = len([it for it in today_existing if it.get('category_id') == '⑦']) + len(today_patents)
-
-    cap_a = max(0, QUOTA_INDUSTRY - existing_a)
-    cap_b = max(0, QUOTA_MACHINE - existing_b)
-    cap_c = max(0, QUOTA_ACADEMIC - existing_c)
-
-    # 对 all_new_items 分类
-    bucket_a_all = [it for it in all_new_items if not is_machine_item(it) and it.get('category_id') != '⑦']
-    bucket_b_all = [it for it in all_new_items if is_machine_item(it)]
-    bucket_c_all = [it for it in all_new_items if it.get('category_id') == '⑦' or it.get('is_academic')]
-
-    def append_capped(source_list, cap, label, existing_list, existing_urls_set):
-        added = 0
-        for item in source_list:
-            if added >= cap:
-                print(f'  [{label}] Daily cap of {cap} reached; skipping remaining.')
-                break
-            if item.get('url') and item['url'] in existing_urls_set:
-                continue
-            existing_urls_set.add(item['url'])
-            existing_list.append(item)
-            added += 1
-            print(f'  [{label}-NEW] {item["title"][:60]}')
-        return added
-
-    appended_a = append_capped(bucket_a_all, cap_a, 'BUCKET-A', existing, existing_urls)
-    appended_b = append_capped(bucket_b_all, cap_b, 'BUCKET-B', existing, existing_urls)
-    appended_c = append_capped(bucket_c_all, cap_c, 'BUCKET-C', existing, existing_urls)
-
-    # 跨桶填充（如果某个桶还有剩余配额，从其他桶借）
-    if appended_a < cap_a:
-        leftover = [it for it in bucket_b_all if it.get('url') not in existing_urls]
-        extra = append_capped(leftover, cap_a - appended_a, 'FILL-A-from-B', existing, existing_urls)
-        appended_a += extra
-    if appended_b < cap_b:
-        leftover = [it for it in bucket_a_all if it.get('url') not in existing_urls]
-        extra = append_capped(leftover, cap_b - appended_b, 'FILL-B-from-A', existing, existing_urls)
-        appended_b += extra
+    # ===== 直接将 all_new_items 追加到 existing（无配额限制）=====
+    appended_total = 0
+    for item in all_new_items:
+        u = item.get('url')
+        if u and u in existing_urls:
+            continue
+        if u:
+            existing_urls.add(u)
+        existing.append(item)
+        appended_total += 1
+        print(f'  [NEW] {item["title"][:60]}')
 
     # 更新学术 deficit
-    actual_academic_today = existing_c + appended_c
-    daily_shortfall = max(0, QUOTA_ACADEMIC - actual_academic_today)
-    new_deficit = max(0, deficit + daily_shortfall - max(0, appended_c - cap_c))
+    today_str = _today_jst()
+    today_academic = [it for it in all_new_items if it.get('category_id') == '⑦' or it.get('is_academic')]
+    actual_academic_today = len(today_academic)
+    daily_shortfall = max(0, 5 - actual_academic_today)   # 目标每天5条学术专利
+    new_deficit = max(0, deficit + daily_shortfall)
     cfg['academic_deficit'] = new_deficit
     cfg['last_run_date'] = today_str
     save_search_config(cfg)
-    print(f'Academic quota: target={QUOTA_ACADEMIC}, fetched today={actual_academic_today}, deficit={new_deficit} (was {deficit}).')
+    print(f'Academic quota: target=5, fetched today={actual_academic_today}, deficit={new_deficit} (was {deficit}).')
 
     # 修剪超过30天的旧新闻（保留永久专利）
     cutoff = datetime.now(timezone.utc) - timedelta(days=30)
@@ -613,6 +580,5 @@ if __name__ == '__main__':
     existing.sort(key=lambda x: x.get('date', ''), reverse=True)
     save_data(data_path, existing, highlights=highlights, patents=patents)
 
-    total_appended_final = appended_a + appended_b + appended_c
-    print(f'Appended {total_appended_final} new items (A={appended_a}, B={appended_b}, C={appended_c}). '
+    print(f'Appended {appended_total} new items. '
           f'Total: {len(existing)} regular + {len(patents)} patents saved to {data_path}')
