@@ -3,7 +3,7 @@ import requests
 from datetime import datetime, timedelta, timezone
 import json
 import os
-import time          # 重要：必须导入 time 模块
+import time
 
 try:
     import pytz
@@ -26,50 +26,82 @@ except ImportError:
 # ============================================================
 # 配置常量
 # ============================================================
-MAX_AGE_DAYS = 30        # 只保留最近30天内的新闻
+MAX_AGE_DAYS = 50          # 放宽到50天（保留相对较新的新闻，后续AI会评分）
 
 _SCRIPT_DIR = os.path.dirname(__file__)
 
 # ============================================================
-# 搜索查询（使用 | 代替 OR）
+# 拆分后的搜索查询（避免使用 |，每条查询短而精准）
 # ============================================================
 SEARCH_QUERIES = [
-    'ユニ・チャーム ティシュー|おむつ|衛生用品|ナプキン|決算|投資',
-    '花王 ティシュー|家庭紙|衛生用品|おむつ|研究開発|投資',
-    'P&G Japan おむつ|ナプキン|ティシュー|衛生用品',
-    'ライオン トイレット|衛生用品|新製品|投資',
-    '大王製紙|王子ホールディングス|日本製紙 家庭紙|トイレット|業界',
-    'Essity Kimberly-Clark ティシュー|衛生用品|おむつ',
-    '丸富製紙|カミ商事 家庭紙|ティシュー',
-    '家庭紙 トイレットペーパー 業界 規制|値上げ',
-    'おむつ 新製品|技術|素材|吸収|ユニ・チャーム|花王',
-    'オムツ 不織布|吸収体|研究開発|製造',
-    'ナプキン 生理用品 新製品|素材|技術|市場',
-    '生理用品 衛生用品 業界|環境|サステナ',
-    'ウェットティッシュ Winner Medical 稳健医療 新製品|技術',
-    'ウェットティシュ 市場|素材|不織布|製造',
-    'Vinda 维达 ティシュー|家庭紙|衛生用品',
-    'Hengan 恒安 ティシュー|おむつ|ナプキン|衛生用品',
-    '中顺洁柔 C&S Paper 家庭紙|製紙',
-    '瑞光 Zuiko 加工機|設備|不織布',
-    'GDM Fameccanica 吸収体 加工機',
-    'OPTIMA packaging 包装機 衛生',
-    'ファナック FANUC パレタイザー 衛生|包装',
+    # ユニ・チャーム
+    'ユニ・チャーム 決算',
+    'ユニ・チャーム 投資',
+    'ユニ・チャーム 新製品',
+    'ユニ・チャーム ティシュー',
+    'ユニ・チャーム おむつ',
+    'ユニ・チャーム 衛生用品',
+    'ユニ・チャーム ナプキン',
+    # 花王
+    '花王 決算',
+    '花王 投資',
+    '花王 研究開発',
+    '花王 ティシュー',
+    '花王 おむつ',
+    '花王 衛生用品',
+    '花王 家庭紙',
+    # P&G Japan
+    'P&G Japan おむつ',
+    'P&G Japan ナプキン',
+    'P&G Japan ティシュー',
+    'P&G Japan 衛生用品',
+    # ライオン
+    'ライオン トイレット',
+    'ライオン 衛生用品',
+    'ライオン 新製品',
+    'ライオン 投資',
+    # 製紙会社
+    '大王製紙 家庭紙',
+    '王子ホールディングス トイレット',
+    '日本製紙 家庭紙',
+    '丸富製紙 ティシュー',
+    'カミ商事 ティシュー',
+    # 国際企業
+    'Essity 衛生用品',
+    'Kimberly-Clark おむつ',
+    # 業界全般
+    '家庭紙 トイレットペーパー 規制',
+    '家庭紙 値上げ',
+    'おむつ 技術 素材',
+    'オムツ 不織布 吸収体',
+    'ナプキン 生理用品 技術',
+    '生理用品 環境 サステナ',
+    'ウェットティッシュ 市場',
+    '不織布 製造 加工機',
+    # 中国企業
+    'Vinda ティシュー',
+    'Hengan おむつ',
+    '中顺洁柔 家庭紙',
+    # 機械メーカー
+    '瑞光 加工機',
+    'GDM 吸収体 加工機',
+    'OPTIMA 包装機',
+    'ファナック パレタイザー',
 ]
 
 ACADEMIC_QUERIES = [
-    'site:jstage.jst.go.jp 王子ホールディングス|王子ネピア ティッシュ|タオル|パルプ 特許|発明|新技術 -大王製紙',
-    'site:patents.google.com 王子ホールディングス|王子ネピア ティッシュ|タオル|パルプ 特許|発明|新技術 -大王製紙',
-    'site:jstage.jst.go.jp 日本製紙|日本製紙クレシア|カミ商事 ティッシュ|タオル|パルプ 特許|発明|新技術 -大王製紙',
-    'site:patents.google.com 日本製紙|日本製紙クレシア|カミ商事 ティッシュ|タオル|パルプ 特許|発明|新技術 -大王製紙',
-    'site:jstage.jst.go.jp ユニ・チャーム|花王|P&G 不織布|おむつ|生理用品|吸収体 特許|発明|新技術',
-    'site:patents.google.com ユニ・チャーム|花王|P&G 不織布|おむつ|生理用品|吸収体 特許|発明|新技術',
-    'site:jstage.jst.go.jp 特種東海製紙|丸富製紙 加工技術|包装|省エネルギー 特許|発明|新技術',
-    'site:patents.google.com 特種東海製紙|丸富製紙 加工技術|包装|省エネルギー 特許|発明|新技術',
+    'site:jstage.jst.go.jp 王子ホールディングス 特許',
+    'site:jstage.jst.go.jp 日本製紙 特許',
+    'site:jstage.jst.go.jp ユニ・チャーム 特許',
+    'site:jstage.jst.go.jp 花王 特許',
+    'site:patents.google.com 王子ホールディングス 特許',
+    'site:patents.google.com 日本製紙 特許',
+    'site:patents.google.com ユニ・チャーム 特許',
+    'site:patents.google.com 花王 特許',
 ]
 
 # ============================================================
-# 相关性过滤关键词（保持不变）
+# 相关性过滤关键词（不变）
 # ============================================================
 TISSUE_CORE_TERMS = [
     '家庭紙', 'ティシュー', 'ティッシュ', 'トイレット', 'ちり紙', 'キッチンペーパー',
@@ -325,7 +357,21 @@ if __name__ == '__main__':
     industry_items = fetch_news(existing_urls=existing_urls)
     academic_items = fetch_academic_news(existing_urls=existing_urls)
 
-    # 合并去重
+    # ===== 去重：基于标题+摘要前120字符（解决转载重复） =====
+    def dedupe_by_title_summary(items):
+        seen = set()
+        deduped = []
+        for it in items:
+            key = (it['title'], it['summary'][:120])
+            if key not in seen:
+                seen.add(key)
+                deduped.append(it)
+        return deduped
+
+    industry_items = dedupe_by_title_summary(industry_items)
+    academic_items = dedupe_by_title_summary(academic_items)
+
+    # 合并并基于 URL 最终去重
     all_new = []
     seen_urls = set()
     for item in industry_items + academic_items:
