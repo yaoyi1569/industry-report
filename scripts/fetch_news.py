@@ -1,444 +1,242 @@
+# ============================================================
+# INDUSTRY MONITORING SYSTEM V3 (CONSULTING-GRADE UPGRADE)
+# Added: multi-source data (RSS + official sites + patents)
+# Core goal: fix data source weakness
+# ============================================================
+
 import re
 import requests
-from datetime import datetime, timedelta, timezone
 import json
 import os
-import time
-
-try:
-    import pytz
-    _PYTZ_AVAILABLE = True
-except ImportError:
-    _PYTZ_AVAILABLE = False
-
-try:
-    import feedparser
-    _feedparser_available = True
-except ImportError:
-    _feedparser_available = False
-
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
+from datetime import datetime, timedelta
 
 # ============================================================
-# 配置常量
+# CONFIG
 # ============================================================
-MAX_AGE_DAYS = 50               # 普通新闻放宽到50天
-PATENT_MAX_AGE_DAYS = 30        # 专利严格限制30天
-
-_SCRIPT_DIR = os.path.dirname(__file__)
-
-# ============================================================
-# 拆分后的搜索查询（普通行业 + 设备专项）
-# ============================================================
-SEARCH_QUERIES_GENERAL = [
-    # ユニ・チャーム
-    'ユニ・チャーム 決算', 'ユニ・チャーム 投資', 'ユニ・チャーム 新製品',
-    'ユニ・チャーム ティシュー', 'ユニ・チャーム おむつ', 'ユニ・チャーム 衛生用品', 'ユニ・チャーム ナプキン',
-    # 花王
-    '花王 決算', '花王 投資', '花王 研究開発', '花王 ティシュー', '花王 おむつ', '花王 衛生用品', '花王 家庭紙',
-    # P&G Japan
-    'P&G Japan おむつ', 'P&G Japan ナプキン', 'P&G Japan ティシュー', 'P&G Japan 衛生用品',
-    # ライオン
-    'ライオン トイレット', 'ライオン 衛生用品', 'ライオン 新製品', 'ライオン 投資',
-    # 製紙会社
-    '大王製紙 家庭紙', '王子ホールディングス トイレット', '日本製紙 家庭紙', '丸富製紙 ティシュー', 'カミ商事 ティシュー',
-    # 国際企業
-    'Essity 衛生用品', 'Kimberly-Clark おむつ',
-    # 業界全般
-    '家庭紙 トイレットペーパー 規制', '家庭紙 値上げ',
-    'おむつ 技術 素材', 'オムツ 不織布 吸収体',
-    'ナプキン 生理用品 技術', '生理用品 環境 サステナ',
-    'ウェットティッシュ 市場', '不織布 製造 加工機',
-    # 中国企業
-    'Vinda ティシュー', 'Hengan おむつ', '中顺洁柔 家庭紙',
-]
-
-# 专项解决设备新闻缺失
-SEARCH_QUERIES_MACHINE = [
-    '加工機 包装機 衛生用品',
-    '不織布 製造 設備',
-    '吸収体 加工機 技術',
-    'パレタイザー 自動化 包装',
-    'ファナック パレタイザー',
-    '瑞光 加工機',
-    'GDM 吸収体',
-    'OPTIMA 包装機',
-]
-
-SEARCH_QUERIES = SEARCH_QUERIES_GENERAL + SEARCH_QUERIES_MACHINE
-
-ACADEMIC_QUERIES = [
-    'site:jstage.jst.go.jp 王子ホールディングス 特許',
-    'site:jstage.jst.go.jp 日本製紙 特許',
-    'site:jstage.jst.go.jp ユニ・チャーム 特許',
-    'site:jstage.jst.go.jp 花王 特許',
-    'site:patents.google.com 王子ホールディングス 特許',
-    'site:patents.google.com 日本製紙 特許',
-    'site:patents.google.com ユニ・チャーム 特許',
-    'site:patents.google.com 花王 特許',
-]
+MAX_NEWS_AGE_DAYS = 50
+MAX_PATENT_AGE_DAYS = 30
+DATA_PATH = "./data/news_data.json"
 
 # ============================================================
-# 相关性过滤关键词
+# KEYWORDS
 # ============================================================
-TISSUE_CORE_TERMS = [
-    '家庭紙', 'ティシュー', 'ティッシュ', 'トイレット', 'ちり紙', 'キッチンペーパー',
-    'おむつ', 'オムツ', 'ナプキン', '生理用', '失禁', '衛生用品', '衛生用紙',
-    'ウェットティシュ', 'ウェットティッシュ', '不織布', '吸収体', 'パルプ',
-    '抽紙', '衛生紙', '加工機', '包装機', 'パレタイザー',
-]
-
-TISSUE_INDUSTRY_COMPANIES = [
-    'ユニ・チャーム', 'unicharm', '大王製紙', '王子製紙', '王子ホールディングス', '日本製紙', '丸富製紙',
-    '瑞光', 'zuiko', 'gdm', 'fameccanica', 'winner medical', '稳健', 'essity', 'kimberly-clark',
-    'キンバリー', 'カミ商事', 'vinda', '维达', 'hengan', '恒安', '中顺洁柔', 'c&s paper',
-]
-
-OFFTOPIC_TERMS = [
-    '洗剤', '柔軟剤', '洗濯洗剤', 'アリエール', 'レノア', 'ボールド', 'ジョイ',
-    'ファブリーズ', '漂白剤', '洗濯槽', 'シャンプー', 'リンス', 'コンディショナー', 'ボディソープ',
-    '化粧品', 'リップ', 'ファンデーション', '美容液', 'スキンケア', '口紅',
-    '食品', '飲料', 'コーヒー', 'ビール', '菓子', 'サプリ',
-]
+MACHINE_TERMS = ['加工機','包装機','パレタイザー','machine','packaging','automation']
+HYGIENE_TERMS = ['おむつ','ナプキン','生理','失禁']
+TISSUE_TERMS = ['ティシュー','トイレット','家庭紙']
+PATENT_TERMS = ['特許','patent']
 
 # ============================================================
-# 分类映射（修正，保证设备新闻归入正确分类）
+# UTIL
 # ============================================================
-CATEGORY_KEYWORDS = {
-    '③': ['加工機', '包装機', 'パレタイザー', '設備', 'マシン', 'GDM', 'Fameccanica', '瑞光', 'Zuiko', 'ファナック', 'FANUC', 'OPTIMA'],
-    '①': ['ユニ・チャーム', '花王', 'P&G', 'ライオン', 'キンバリー', 'Kimberly', 'Essity',
-           '衛生用品', 'おむつ', 'オムツ', 'ナプキン', '生理用', 'Vinda', '维达', 'Hengan', '恒安', '中顺洁柔'],
-    '②': ['製紙', 'パルプ', '王子', '日本製紙', 'Essity', '大王製紙'],
-    '⑤': ['ウェット', 'Winner Medical', '稳健'],
-    '⑥': ['ティシュー', 'ティッシュ', 'トイレット', '家庭紙', '衛生用紙'],
-    '⑦': ['jstage', 'patents.google', 'scholar.google', '特許', '論文', '学会', 'jst.go.jp'],
-}
-
-CATEGORY_NAMES = {
-    '①': '日用品・衛生用品メーカー',
-    '②': '製紙・パルプメーカー',
-    '③': '不織布・吸収体加工機メーカー',
-    '④': '包装機・パレタイジング設備メーカー',  # 备用
-    '⑤': 'ウェットティッシュ製造メーカー',
-    '⑥': 'ティッシュペーパー・家庭紙専業メーカー',
-    '⑦': '学術論文・特許情報',
-}
-
-KNOWN_COMPANIES = [
-    'ユニ・チャーム', '花王', 'P&G Japan', 'P&G', 'ライオン', 'キンバリー・クラーク',
-    'Kimberly-Clark', '大王製紙', '王子ホールディングス', '日本製紙', 'Essity',
-    '株式会社瑞光（Zuiko）', '瑞光', 'GDM', 'Fameccanica', 'OPTIMA Packaging', 'ファナック',
-    'Winner Medical（稳健医疗）', '丸富製紙', 'カミ商事', 'Vinda（维达）', 'Hengan（恒安）', '中顺洁柔', 'C&S Paper',
-]
+def today():
+    return datetime.utcnow().strftime('%Y-%m-%d')
 
 # ============================================================
-# 辅助函数
+# DATE EXTRACTION
 # ============================================================
-def _today_jst():
-    if _PYTZ_AVAILABLE:
-        return datetime.now(pytz.timezone('Asia/Tokyo')).strftime('%Y-%m-%d')
-    return (datetime.now(timezone.utc) + timedelta(hours=9)).strftime('%Y-%m-%d')
-
-def is_industry_relevant(title, snippet):
-    text = (title + ' ' + snippet).lower()
-    has_core = any(term.lower() in text for term in TISSUE_CORE_TERMS)
-    has_company = any(name.lower() in text for name in TISSUE_INDUSTRY_COMPANIES)
-    has_offtopic = any(term.lower() in text for term in OFFTOPIC_TERMS)
-    if has_offtopic and not has_core:
-        return False
-    return has_core or has_company
-
-def map_category(text):
-    # 优先匹配设备类，避免误归入其他类
-    for cat_id, keywords in CATEGORY_KEYWORDS.items():
-        for kw in keywords:
-            if kw.lower() in text.lower():
-                return cat_id, CATEGORY_NAMES[cat_id]
-    # 默认归入家庭纸类（避免出现未分类）
-    return '⑥', CATEGORY_NAMES['⑥']
-
-def extract_company(text):
-    for company in KNOWN_COMPANIES:
-        if company.lower() in text.lower():
-            return company
-    return '不明'
-
-def determine_info_type(text):
-    if any(k in text for k in ['投資', '買収', '出資', 'M&A', '資金', 'acquisition', '決算', '株価']):
-        return '投資'
-    if any(k in text for k in ['特許', 'patent', '知的']):
-        return '特許'
-    if any(k in text for k in ['研究', '論文', '学会', '技術開発', 'research', 'development', 'NEDO']):
-        return '研究開発'
-    if any(k in text for k in ['加工機', 'マシン', '設備', 'machine']):
-        return '加工機技術'
-    if any(k in text for k in ['包装機', 'パッケージ', '充填', 'packaging']):
-        return '包装機技術'
-    if any(k in text for k in ['新製品', '新商品', '新発売', 'new product', 'launch', 'リニューアル']):
-        return '新製品'
-    if any(k in text for k in ['環境', 'エコ', 'サステナ', 'sustainability', 'eco', 'carbon', 'CDP']):
-        return '環境'
-    if any(k in text for k in ['規制', 'law', '法律', 'regulation', '値上げ', '施行']):
-        return '規制'
-    return '其他'
-
-def strip_html(text):
-    return re.sub(r'<[^>]+>', '', text or '').strip()
+def extract_real_date(text):
+    match = re.search(r'(20\d{2})[/-](\d{1,2})[/-](\d{1,2})', text)
+    if match:
+        y,m,d = match.groups()
+        return f"{y}-{int(m):02d}-{int(d):02d}"
+    return None
 
 # ============================================================
-# RSS 抓取（主源 + 备用源）
+# RELEVANCE
 # ============================================================
-def fetch_from_google_news_rss(query, max_items=100, max_age_days=MAX_AGE_DAYS):
-    if not _feedparser_available:
-        return []
-    feed_url = 'https://news.google.com/rss/search?q={}&hl=ja&gl=JP&ceid=JP:ja'.format(
-        requests.utils.quote(query)
-    )
-    try:
-        feed = feedparser.parse(feed_url)
-        items = []
-        cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
-        for entry in feed.entries[:max_items]:
-            published = entry.get('published_parsed')
-            if published:
-                pub_date = datetime.fromtimestamp(time.mktime(published), tz=timezone.utc)
-                if pub_date < cutoff:
-                    continue
-            title = entry.get('title', '')
-            link = entry.get('link', '')
-            summary = entry.get('summary', '')
-            source_info = entry.get('source')
-            source = source_info.get('title', '') if isinstance(source_info, dict) else ''
-            items.append({
-                'title': title,
-                'link': link,
-                'snippet': summary,
-                'displayLink': source,
-            })
-        print(f'  [Google-RSS] {len(items)} fresh (≤{max_age_days}d) for: {query[:60]}')
-        return items
-    except Exception as e:
-        print(f'  [RSS] Error: {e}')
-        return []
+def is_relevant(text):
+    t = text.lower()
 
-def fetch_from_second_rss(query, max_items=100, max_age_days=MAX_AGE_DAYS):
-    """备用 RSS 源，用于补充设备新闻"""
-    if not _feedparser_available:
-        return []
-    # 使用 feed.informer 示例（实际可用任何免费 RSS 聚合器）
-    feed_url = 'https://feed.informer.com/atom/custom/1qgfq6pyjm.atom?q={}'.format(
-        requests.utils.quote(query)
-    )
-    try:
-        feed = feedparser.parse(feed_url)
-        items = []
-        cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
-        for entry in feed.entries[:max_items]:
-            published = entry.get('published_parsed')
-            if published:
-                pub_date = datetime.fromtimestamp(time.mktime(published), tz=timezone.utc)
-                if pub_date < cutoff:
-                    continue
-            title = entry.get('title', '')
-            link = entry.get('link', '')
-            summary = entry.get('summary', '')
-            source = entry.get('source', {}).get('title', '') if isinstance(entry.get('source'), dict) else ''
-            items.append({
-                'title': title,
-                'link': link,
-                'snippet': summary,
-                'displayLink': source,
-            })
-        print(f'  [Backup-RSS] {len(items)} fresh (≤{max_age_days}d) for: {query[:60]}')
-        return items
-    except Exception as e:
-        print(f'  [Backup-RSS] Error: {e}')
-        return []
+    if any(k.lower() in t for k in MACHINE_TERMS):
+        return True
 
-def fetch_news(existing_urls=None):
-    today = _today_jst()
+    if any(k.lower() in t for k in HYGIENE_TERMS + TISSUE_TERMS):
+        return True
+
+    return False
+
+# ============================================================
+# CATEGORY
+# ============================================================
+def classify(text):
+    t = text.lower()
+
+    if any(k in t for k in HYGIENE_TERMS):
+        return 'HYGIENE'
+
+    if any(k in t for k in MACHINE_TERMS):
+        return 'MACHINE'
+
+    if any(k in t for k in TISSUE_TERMS):
+        return 'TISSUE'
+
+    if any(k in t for k in PATENT_TERMS):
+        return 'PATENT'
+
+    return 'OTHER'
+
+# ============================================================
+# 1️⃣ RSS SOURCE
+# ============================================================
+def fetch_rss(query):
+    url = f"https://news.google.com/rss/search?q={query}&hl=ja&gl=JP&ceid=JP:ja"
+    xml = requests.get(url).text
+    items = re.findall(r'<item>(.*?)</item>', xml, re.S)
+
     results = []
-    _existing = existing_urls or set()
-    for query in SEARCH_QUERIES:
-        print(f'  Searching (RSS, age≤{MAX_AGE_DAYS}d): {query[:80]}')
-        items = fetch_from_google_news_rss(query, max_age_days=MAX_AGE_DAYS)
-        if len(items) < 3:
-            backup = fetch_from_second_rss(query, max_age_days=MAX_AGE_DAYS)
-            items.extend(backup)
-            # 基于标题+摘要去重
-            seen = set()
-            deduped = []
-            for it in items:
-                key = (it['title'], it['snippet'][:120])
-                if key not in seen:
-                    seen.add(key)
-                    deduped.append(it)
-            items = deduped
-        for item in items:
-            title = item.get('title', '')
-            url = item.get('link', '')
-            snippet = strip_html(item.get('snippet', ''))
-            source_name = item.get('displayLink', '')
-            if url and url in _existing:
-                continue
-            if not is_industry_relevant(title, snippet):
-                continue
-            full_text = title + ' ' + snippet
-            category_id, category_name = map_category(full_text)
-            company = extract_company(full_text)
-            info_type = determine_info_type(full_text)
-            results.append({
-                'title': title,
-                'summary': snippet,
-                'company': company,
-                'date': today,
-                'category_id': category_id,
-                'category_name': category_name,
-                'info_type': info_type,
-                'url': url,
-                'source_name': source_name,
-                'confidence': '高' if company != '不明' else '中',
-            })
-    return results
-
-def fetch_academic_news(existing_urls=None):
-    today = _today_jst()
-    results = []
-    _existing = existing_urls or set()
-    for query in ACADEMIC_QUERIES:
-        print(f'  [ACADEMIC] Searching (RSS, age≤{PATENT_MAX_AGE_DAYS}d): {query[:80]}')
-        items = fetch_from_google_news_rss(query, max_age_days=PATENT_MAX_AGE_DAYS)
-        for item in items:
-            title = item.get('title', '')
-            url = item.get('link', '')
-            snippet = strip_html(item.get('snippet', ''))
-            source_name = item.get('displayLink', '')
-            if url and url in _existing:
-                continue
-            if not is_industry_relevant(title, snippet):
-                continue
-            company = extract_company(title + ' ' + snippet)
-            info_type = determine_info_type(title + ' ' + snippet)
-            # 学术内容强制标记为专利/论文分类
-            results.append({
-                'title': title,
-                'summary': snippet,
-                'company': company,
-                'date': today,
-                'category_id': '⑦',
-                'category_name': CATEGORY_NAMES['⑦'],
-                'info_type': info_type,
-                'url': url,
-                'source_name': source_name,
-                'confidence': '高' if company != '不明' else '中',
-                'is_academic': True,
-            })
-    return results
-
-# ============================================================
-# 数据持久化
-# ============================================================
-def load_existing(path):
-    if os.path.exists(path):
-        with open(path, 'r', encoding='utf-8') as f:
-            raw = json.load(f)
-        if isinstance(raw, list):
-            return raw, None, [], []
-        if 'dates' in raw:
-            items = []
-            for date_items in raw.get('dates', {}).values():
-                items.extend(date_items)
-            patents = raw.get('patents', [])
-            return items, raw.get('last_updated'), raw.get('highlights', []), patents
-        return raw.get('items', []), raw.get('last_updated'), raw.get('highlights', []), []
-    return [], None, [], []
-
-def save_data(path, items, highlights=None, patents=None):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-    dates = {}
     for item in items:
-        d = item.get('date', 'unknown')
-        dates.setdefault(d, []).append(item)
-    payload = {
-        'last_updated': now,
-        'highlights': highlights or [],
-        'dates': dates,
-        'patents': patents or [],
-    }
-    with open(path, 'w', encoding='utf-8') as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
+        title = re.search(r'<title>(.*?)</title>', item)
+        link = re.search(r'<link>(.*?)</link>', item)
+        desc = re.search(r'<description>(.*?)</description>', item)
+
+        results.append({
+            'title': title.group(1) if title else '',
+            'url': link.group(1) if link else '',
+            'snippet': desc.group(1) if desc else ''
+        })
+    return results
 
 # ============================================================
-# 主入口
+# 2️⃣ OFFICIAL SITE SCRAPER (KEY UPGRADE)
 # ============================================================
-if __name__ == '__main__':
-    data_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'news_data.json')
-    data_path = os.path.normpath(data_path)
+OFFICIAL_SITES = [
+    "https://www.optima-packaging.com/en/news",
+    "https://www.fameccanica.com/en/news/",
+    "https://www.zuiko.co.jp/news/",
+]
 
-    existing, _, highlights, patents = load_existing(data_path)
-    existing_urls = {item['url'] for item in existing if item.get('url')}
-    existing_urls.update(item['url'] for item in patents if item.get('url'))
+def fetch_official_sites():
+    results = []
 
-    print(f'Existing items: {len(existing)} regular, {len(patents)} patents')
-    print(f'Fetching news (general max age = {MAX_AGE_DAYS} days, patent max age = {PATENT_MAX_AGE_DAYS} days) ...')
+    for url in OFFICIAL_SITES:
+        try:
+            html = requests.get(url, timeout=10).text
 
-    industry_items = fetch_news(existing_urls=existing_urls)
-    academic_items = fetch_academic_news(existing_urls=existing_urls)
+            titles = re.findall(r'>([^<>]{20,120})<', html)
 
-    # 去重：标题+摘要前120字符
-    def dedupe_by_title_summary(items):
-        seen = set()
-        deduped = []
-        for it in items:
-            key = (it['title'], it['summary'][:120])
-            if key not in seen:
-                seen.add(key)
-                deduped.append(it)
-        return deduped
-
-    industry_items = dedupe_by_title_summary(industry_items)
-    academic_items = dedupe_by_title_summary(academic_items)
-
-    # 最终合并去重（基于URL）
-    all_new = []
-    seen_urls = set()
-    for item in industry_items + academic_items:
-        u = item.get('url')
-        if not u:
+            for t in titles[:20]:
+                if is_relevant(t):
+                    results.append({
+                        'title': t.strip(),
+                        'url': url,
+                        'snippet': t.strip()
+                    })
+        except:
             continue
-        if u in existing_urls or u in seen_urls:
+
+    return results
+
+# ============================================================
+# 3️⃣ PATENT SOURCE (SIMPLIFIED)
+# ============================================================
+def fetch_patents():
+    query = "おむつ 特許"
+    items = fetch_rss(query)
+
+    results = []
+    for it in items:
+        text = it['title'] + it['snippet']
+
+        if '特許' not in text:
             continue
-        seen_urls.add(u)
-        all_new.append(item)
 
-    appended = 0
-    for item in all_new:
-        existing.append(item)
-        appended += 1
-        print(f'  [NEW] {item["title"][:60]}')
+        real_date = extract_real_date(text)
+        if real_date:
+            d = datetime.strptime(real_date, '%Y-%m-%d')
+            if d < datetime.utcnow() - timedelta(days=MAX_PATENT_AGE_DAYS):
+                continue
 
-    # 修剪超过30天的旧新闻（保留永久专利）
-    cutoff = datetime.now(timezone.utc) - timedelta(days=30)
-    cutoff_str = cutoff.strftime('%Y-%m-%d')
-    kept = []
-    for item in existing:
-        if item.get('permanent_record'):
-            kept.append(item)
-        elif item.get('date', '9999-99-99') >= cutoff_str:
-            kept.append(item)
-        else:
-            print(f'  [PRUNED-OLD-NEWS] {item.get("title", "")[:60]} ({item.get("date", "")})')
-    pruned = len(existing) - len(kept)
-    if pruned:
-        print(f'Pruned {pruned} items older than 30 days.')
-    existing = kept
+        results.append(it)
 
-    existing.sort(key=lambda x: x.get('date', ''), reverse=True)
-    save_data(data_path, existing, highlights=highlights, patents=patents)
+    return results
 
-    print(f'Appended {appended} new items. Total: {len(existing)} regular + {len(patents)} patents saved to {data_path}')
+# ============================================================
+# MAIN FETCH
+# ============================================================
+def fetch_all():
+    queries = [
+        'おむつ 技術',
+        'ナプキン 新製品',
+        '包装機 自動化',
+        'パレタイザー ロボット'
+    ]
+
+    results = []
+
+    # RSS
+    for q in queries:
+        for it in fetch_rss(q):
+            text = it['title'] + it['snippet']
+            if not is_relevant(text):
+                continue
+
+            real_date = extract_real_date(text)
+            date = real_date if real_date else today()
+
+            results.append({
+                'title': it['title'],
+                'summary': it['snippet'],
+                'date': date,
+                'category': classify(text),
+                'url': it['url']
+            })
+
+    # OFFICIAL
+    for it in fetch_official_sites():
+        text = it['title']
+        results.append({
+            'title': it['title'],
+            'summary': it['snippet'],
+            'date': today(),
+            'category': classify(text),
+            'url': it['url']
+        })
+
+    # PATENT
+    for it in fetch_patents():
+        text = it['title']
+        results.append({
+            'title': it['title'],
+            'summary': it['snippet'],
+            'date': today(),
+            'category': 'PATENT',
+            'url': it['url']
+        })
+
+    return results
+
+# ============================================================
+# SIMPLE SCORING
+# ============================================================
+def score(item):
+    t = item['title']
+
+    s = 50
+    if '投資' in t: s += 20
+    if '特許' in t: s += 25
+    if '新製品' in t: s += 15
+
+    return min(s,100)
+
+# ============================================================
+# PIPELINE
+# ============================================================
+def run():
+    items = fetch_all()
+
+    for it in items:
+        it['score'] = score(it)
+
+    items.sort(key=lambda x: x['score'], reverse=True)
+
+    os.makedirs("./data", exist_ok=True)
+    with open(DATA_PATH, "w", encoding="utf-8") as f:
+        json.dump(items, f, ensure_ascii=False, indent=2)
+
+    print(f"DONE: {len(items)} items")
+
+# ============================================================
+# ENTRY
+# ============================================================
+if __name__ == "__main__":
+    run()
